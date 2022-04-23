@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "GarrysMod/Lua/Interface.h"
 extern "C"
@@ -14,11 +15,40 @@ using namespace GarrysMod::Lua;
 
 ILuaBase* GlobalLUA;
 
+#define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
+
 const int SM64_MAX_HEALTH = 8;
+
+//const int DEFAULT_MARIO_COLORS[6][3] = {
+//	{ 0, 0, 255 },
+//	{ 114, 28, 14 },
+//	{ 115, 6, 0 },
+//	{ 254, 193, 121 },
+//	{ 255, 0, 0 },
+//	{ 255, 255, 255 },
+//};
+
+float marioColorLUT[6][3] = {
+	{ -1.0, 0.0, 0.0 },
+	{ -1.0, 0.0, 0.0 },
+	{ -1.0, 0.0, 0.0 },
+	{ -1.0, 0.0, 0.0 },
+	{ -1.0, 0.0, 0.0 },
+	{ -1.0, 0.0, 0.0 },
+};
+
+struct mInfo {
+	vector<int> references;
+	int prevNumTris;
+	int tickCount;
+	SM64MarioGeometryBuffers geoBuffers;
+};
 
 bool isGlobalInit = false;
 uint8_t textureData[4 * SM64_TEXTURE_WIDTH * SM64_TEXTURE_HEIGHT];
 double scaleFactor = 2.0;
+map<int32_t, mInfo> mInfos;
+int animInfoRef = -1;
 
 void debug_print(char* text)
 {
@@ -29,16 +59,33 @@ void debug_print(char* text)
 	GlobalLUA->Pop();
 }
 
+void debug_print(const char* text)
+{
+	GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+	GlobalLUA->GetField(-1, "print");
+	GlobalLUA->PushString(text);
+	GlobalLUA->Call(1, 0);
+	GlobalLUA->Pop();
+}
+
+void debug_print(string text)
+{
+	GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+	GlobalLUA->GetField(-1, "print");
+	GlobalLUA->PushString(text.c_str());
+	GlobalLUA->Call(1, 0);
+	GlobalLUA->Pop();
+}
+
 LUA_FUNCTION(IsGlobalInit)
 {
 	LUA->PushBool(isGlobalInit);
 	return 1;
 }
 
-LUA_FUNCTION(GlobalInit)
+vector<uint8_t> ReadBinaryFile(const char* fileName)
 {
-	string inputFile = "C:\\Users\\ckosmic\\Desktop\\baserom.us.z64";
-	ifstream infile(inputFile, ios::binary);
+	ifstream infile(fileName, ios::binary);
 	infile.unsetf(ios::skipws);
 
 	infile.seekg(0, ios::end);
@@ -50,7 +97,18 @@ LUA_FUNCTION(GlobalInit)
 
 	vec.insert(vec.begin(), istream_iterator<uint8_t>(infile), istream_iterator<uint8_t>());
 
-	sm64_global_init(vec.data(), textureData, (SM64DebugPrintFunctionPtr)&debug_print);
+	return vec;
+}
+
+LUA_FUNCTION(GlobalInit)
+{
+	vector<uint8_t> romFile = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\baserom.us.z64");
+	vector<uint8_t> bank_sets = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\bank_sets");
+	vector<uint8_t> sequences_bin = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sequences.bin");
+	vector<uint8_t> sound_data_ctl = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sound_data.ctl");
+	vector<uint8_t> sound_data_tbl = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sound_data.tbl");
+
+	sm64_global_init(romFile.data(), bank_sets.data(), sequences_bin.data(), sound_data_ctl.data(), sound_data_tbl.data(), bank_sets.size(), sequences_bin.size(), sound_data_ctl.size(), sound_data_tbl.size(), textureData, (SM64DebugPrintFunctionPtr)&debug_print);
 
 	LUA->CreateTable();
 	for (int i = 0; i < sizeof(textureData); i += 4)
@@ -90,14 +148,17 @@ LUA_FUNCTION(SetScaleFactor)
 {
 	LUA->CheckType(1, Type::Number);
 	scaleFactor = LUA->GetNumber(1);
+	LUA->Pop();
 	return 1;
 }
 
 LUA_FUNCTION(StaticSurfacesLoad)
 {
 	LUA->CheckType(1, Type::Table);
+	LUA->CheckType(1, Type::Table);
 
-	size_t tableSize = LUA->ObjLen(-1);
+	size_t tableSize = LUA->ObjLen(-2);
+	size_t dispTableSize = LUA->ObjLen(-1);
 	if (tableSize < 1 || tableSize % 3 != 0)
 	{
 		LUA->PushBool(false);
@@ -105,6 +166,32 @@ LUA_FUNCTION(StaticSurfacesLoad)
 	}
 
 	vector<struct SM64Surface> surfaces;
+
+	for (int i = 0; i < dispTableSize; i += 3)
+	{
+		LUA->PushNumber(i + 1);
+		LUA->GetTable(-2);
+		Vector vert1Pos = LUA->GetVector();
+		LUA->Pop();
+		LUA->PushNumber(i + 2);
+		LUA->GetTable(-2);
+		Vector vert2Pos = LUA->GetVector();
+		LUA->Pop();
+		LUA->PushNumber(i + 3);
+		LUA->GetTable(-2);
+		Vector vert3Pos = LUA->GetVector();
+		LUA->Pop();
+
+		SM64Surface surface = { 0, 0, 0,
+			{
+				{ -vert3Pos.x * scaleFactor, vert3Pos.z * scaleFactor, vert3Pos.y * scaleFactor },
+				{ -vert2Pos.x * scaleFactor, vert2Pos.z * scaleFactor, vert2Pos.y * scaleFactor },
+				{ -vert1Pos.x * scaleFactor, vert1Pos.z * scaleFactor, vert1Pos.y * scaleFactor }
+			}
+		};
+		surfaces.push_back(surface);
+	}
+	LUA->Pop();
 
 	for (int i = 0; i < tableSize; i += 3)
 	{
@@ -123,15 +210,115 @@ LUA_FUNCTION(StaticSurfacesLoad)
 		
 		SM64Surface surface = { 0, 0, 0, 
 			{
-				{ vert1Pos.x * scaleFactor, vert1Pos.y * scaleFactor, vert1Pos.z * scaleFactor },
-				{ vert2Pos.x * scaleFactor, vert2Pos.y * scaleFactor, vert2Pos.z * scaleFactor }, 
-				{ vert3Pos.x * scaleFactor, vert3Pos.y * scaleFactor, vert3Pos.z * scaleFactor }} 
-			};
+				{ -vert3Pos.x * scaleFactor, vert3Pos.z * scaleFactor, vert3Pos.y * scaleFactor },
+				{ -vert2Pos.x * scaleFactor, vert2Pos.z * scaleFactor, vert2Pos.y * scaleFactor },
+				{ -vert1Pos.x * scaleFactor, vert1Pos.z * scaleFactor, vert1Pos.y * scaleFactor }
+			} 
+		};
 		surfaces.push_back(surface);
 	}
 	LUA->Pop();
 
 	sm64_static_surfaces_load(surfaces.data(), surfaces.size());
+	surfaces.clear();
+
+	LUA->PushBool(true);
+
+	return 1;
+}
+
+LUA_FUNCTION(SurfaceObjectCreate)
+{
+	LUA->CheckType(1, Type::Table);
+	LUA->CheckType(2, Type::Vector);
+	LUA->CheckType(3, Type::Angle);
+
+	QAngle angle = LUA->GetAngle(-1);
+	Vector position = LUA->GetVector(-2);
+	size_t tableSize = LUA->ObjLen(-3);
+	if (tableSize < 1 || tableSize % 3 != 0)
+	{
+		LUA->PushBool(false);
+		return 1;
+	}
+	LUA->Pop(2);
+
+	vector<struct SM64Surface> surfaces;
+
+	for (int i = 0; i < tableSize; i += 3)
+	{
+		LUA->PushNumber(i + 1);
+		LUA->GetTable(-2);
+		Vector vert1Pos = LUA->GetVector();
+		LUA->Pop();
+		LUA->PushNumber(i + 2);
+		LUA->GetTable(-2);
+		Vector vert2Pos = LUA->GetVector();
+		LUA->Pop();
+		LUA->PushNumber(i + 3);
+		LUA->GetTable(-2);
+		Vector vert3Pos = LUA->GetVector();
+		LUA->Pop();
+
+		SM64Surface surface = { 0, 0, 0,
+			{
+				{ -vert3Pos.x * scaleFactor, vert3Pos.z * scaleFactor, vert3Pos.y * scaleFactor },
+				{ -vert2Pos.x * scaleFactor, vert2Pos.z * scaleFactor, vert2Pos.y * scaleFactor },
+				{ -vert1Pos.x * scaleFactor, vert1Pos.z * scaleFactor, vert1Pos.y * scaleFactor }
+			}
+		};
+		surfaces.push_back(surface);
+	}
+	LUA->Pop();
+
+	SM64ObjectTransform objTransform = {
+		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
+		{ angle.z, 360-angle.y, angle.x }
+	};
+
+	SM64SurfaceObject surfObject;
+	surfObject.transform = objTransform;
+	surfObject.surfaceCount = surfaces.size();
+	surfObject.surfaces = surfaces.data();
+
+	uint32_t surfaceId = sm64_surface_object_create(&surfObject);
+
+	LUA->PushNumber(surfaceId);
+
+	return 1;
+}
+
+LUA_FUNCTION(SurfaceObjectMove)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Vector);
+	LUA->CheckType(3, Type::Angle);
+
+	uint32_t surfaceId = LUA->GetNumber(1);
+	Vector position = LUA->GetVector(2);
+	QAngle angle = LUA->GetAngle(3);
+
+	LUA->Pop(3);
+
+	SM64ObjectTransform objTransform = {
+		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
+		{ angle.z, 360-angle.y, angle.x }
+	};
+
+	sm64_surface_object_move(surfaceId, &objTransform);
+
+	LUA->PushBool(true);
+
+	return 1;
+}
+
+LUA_FUNCTION(SurfaceObjectDelete)
+{
+	LUA->CheckType(1, Type::Number);
+
+	uint32_t surfaceId = LUA->GetNumber(1);
+	LUA->Pop();
+	sm64_surface_object_delete(surfaceId);
 
 	LUA->PushBool(true);
 
@@ -141,133 +328,426 @@ LUA_FUNCTION(StaticSurfacesLoad)
 LUA_FUNCTION(MarioCreate)
 {
 	LUA->CheckType(1, Type::Vector);
+	LUA->CheckType(2, Type::Bool);
 	Vector pos = LUA->GetVector(1);
-	LUA->PushNumber((double)sm64_mario_create(pos.x * scaleFactor, pos.y * scaleFactor, pos.z * scaleFactor, 0, 0, 0));
+	bool isFake = LUA->GetBool(2);
+	LUA->Pop(2);
+	int32_t marioId = sm64_mario_create(-pos.x * scaleFactor, pos.z * scaleFactor, pos.y * scaleFactor, 0, 0, 0, isFake);
+	LUA->PushNumber(marioId);
+
+	// References:
+	// 0: Vertex position table
+	// 1: Vertex normal table
+	// 2: Vertex U table
+	// 3: Vertex V table
+	// 4: Vertex color table
+	// 5: Vertex info table (contains tables 0-4)
+	// 6: State info table
+	// 7: Tick result table ([1] == table 6, [2] == table 5)
+
+	if (marioId >= 0)
+	{
+		mInfos[marioId].references = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+		mInfos[marioId].prevNumTris = -1;
+		mInfos[marioId].tickCount = 0;
+
+		for (int i = 0; i < mInfos[marioId].references.size(); i++)
+		{
+			LUA->CreateTable();
+			mInfos[marioId].references[i] = LUA->ReferenceCreate();
+		}
+
+		LUA->CreateTable();
+		animInfoRef = LUA->ReferenceCreate(); // Anim info table
+
+		mInfos[marioId].geoBuffers.position = new float[SM64_GEO_MAX_TRIANGLES * 3 * 3]();
+		mInfos[marioId].geoBuffers.normal = new float[SM64_GEO_MAX_TRIANGLES * 3 * 3]();
+		mInfos[marioId].geoBuffers.color = new float[SM64_GEO_MAX_TRIANGLES * 3 * 3]();
+		mInfos[marioId].geoBuffers.uv = new float[SM64_GEO_MAX_TRIANGLES * 3 * 2]();
+	}
+
+
+	return 1;
+}
+
+void GenerateGeoTable(int32_t marioId, int refOffset, SM64MarioGeometryBuffers* geoBuffers, Vector offset)
+{
+	int k = 2;
+	for (int i = 0; i < geoBuffers->numTrianglesUsed * 3; i++)
+	{
+		// Optimization? idk
+		int l = (int)(i / 3) * 3 + k;
+		int iTimes3 = l * 3;
+		int iTimes3Plus1 = iTimes3 + 1;
+		int iTimes3Plus2 = iTimes3 + 2;
+
+		GlobalLUA->ReferencePush(mInfos[marioId].references[0 + refOffset]);
+		Vector pos;
+		pos.x = (-geoBuffers->position[iTimes3] + offset.x) / scaleFactor;
+		pos.y = (geoBuffers->position[iTimes3Plus2] + offset.y) / scaleFactor;
+		pos.z = (geoBuffers->position[iTimes3Plus1] + offset.z) / scaleFactor - 5;
+		GlobalLUA->PushNumber(i + 1);
+		GlobalLUA->PushVector(pos);
+		GlobalLUA->SetTable(-3);
+		GlobalLUA->Pop();
+
+		GlobalLUA->ReferencePush(mInfos[marioId].references[1 + refOffset]);
+		Vector norm;
+		norm.x = -geoBuffers->normal[iTimes3];
+		norm.y = geoBuffers->normal[iTimes3Plus2];
+		norm.z = geoBuffers->normal[iTimes3Plus1];
+		GlobalLUA->PushNumber(i + 1);
+		GlobalLUA->PushVector(norm);
+		GlobalLUA->SetTable(-3);
+		GlobalLUA->Pop();
+
+		GlobalLUA->ReferencePush(mInfos[marioId].references[2 + refOffset]);
+		float u = geoBuffers->uv[l * 2] * 0.6875f;
+		GlobalLUA->PushNumber(i + 1);
+		GlobalLUA->PushNumber(u);
+		GlobalLUA->SetTable(-3);
+		GlobalLUA->Pop();
+
+		GlobalLUA->ReferencePush(mInfos[marioId].references[3 + refOffset]);
+		float v = geoBuffers->uv[l * 2 + 1];
+		GlobalLUA->PushNumber(i + 1);
+		GlobalLUA->PushNumber(v);
+		GlobalLUA->SetTable(-3);
+		GlobalLUA->Pop();
+
+		int colorIndex = -1;
+		if (mInfos[marioId].tickCount < 2)
+		{
+			for (int j = 0; j < 6; j++)
+			{
+				if (memcmp(&geoBuffers->color[iTimes3], marioColorLUT[j], 3 * sizeof(float)) == 0)
+				{
+					colorIndex = j;
+					break;
+				}
+
+				if (marioColorLUT[j][0] == -1)
+				{
+					memcpy(marioColorLUT[j], &geoBuffers->color[iTimes3], 3 * sizeof(float));
+					colorIndex = j;
+					break;
+				}
+			}
+		}
+		else
+		{
+			for (int j = 0; j < 6; j++)
+				if (memcmp(&geoBuffers->color[iTimes3], marioColorLUT[j], 3 * sizeof(float)) == 0)
+				{
+					colorIndex = j;
+					break;
+				}
+		}
+
+		GlobalLUA->ReferencePush(mInfos[marioId].references[4 + refOffset]);
+		GlobalLUA->PushNumber(i + 1);
+		GlobalLUA->PushNumber(colorIndex + 1);
+		GlobalLUA->SetTable(-3);
+		GlobalLUA->Pop();
+
+		k--;
+		if (k < 0) k = 2;
+	}
+
+	// Number of triangles changed, so empty the unused parts of the table or else lingering geometry will render
+	if (geoBuffers->numTrianglesUsed < mInfos[marioId].prevNumTris)
+	{
+		for (int b = 0; b < 2; b++)
+		{
+			int offset = b * 8;
+			for (int i = geoBuffers->numTrianglesUsed * 3; i < mInfos[marioId].prevNumTris * 3; i++)
+			{
+				GlobalLUA->ReferencePush(mInfos[marioId].references[0 + offset]);
+				GlobalLUA->PushNumber(i + 1);
+				GlobalLUA->PushNil();
+				GlobalLUA->SetTable(-3);
+				GlobalLUA->Pop();
+
+				GlobalLUA->ReferencePush(mInfos[marioId].references[1 + offset]);
+				GlobalLUA->PushNumber(i + 1);
+				GlobalLUA->PushNil();
+				GlobalLUA->SetTable(-3);
+				GlobalLUA->Pop();
+
+				GlobalLUA->ReferencePush(mInfos[marioId].references[2 + offset]);
+				GlobalLUA->PushNumber(i + 1);
+				GlobalLUA->PushNil();
+				GlobalLUA->SetTable(-3);
+				GlobalLUA->Pop();
+
+				GlobalLUA->ReferencePush(mInfos[marioId].references[3 + offset]);
+				GlobalLUA->PushNumber(i + 1);
+				GlobalLUA->PushNil();
+				GlobalLUA->SetTable(-3);
+				GlobalLUA->Pop();
+
+				GlobalLUA->ReferencePush(mInfos[marioId].references[4 + offset]);
+				GlobalLUA->PushNumber(i + 1);
+				GlobalLUA->PushNil();
+				GlobalLUA->SetTable(-3);
+				GlobalLUA->Pop();
+			}
+		}
+	}
+
+	mInfos[marioId].prevNumTris = geoBuffers->numTrianglesUsed;
+}
+
+LUA_FUNCTION(GetMarioAnimInfo)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+
+	int32_t marioId = (int32_t)LUA->GetNumber(1);
+	LUA->Pop();
+	int16_t rot[3] = { 0, 0, 0 };
+
+	SM64AnimInfo* animInfo = sm64_mario_get_anim_info(marioId, rot);
+
+	LUA->ReferencePush(animInfoRef);
+
+	LUA->PushNumber(animInfo->animID);
+	LUA->SetField(-2, "animID");
+	LUA->PushNumber(animInfo->animYTrans);
+	LUA->SetField(-2, "animYTrans");
+	LUA->PushNumber(animInfo->animFrame);
+	LUA->SetField(-2, "animFrame");
+	LUA->PushNumber(animInfo->animTimer);
+	LUA->SetField(-2, "animTimer");
+	LUA->PushNumber(animInfo->animFrameAccelAssist);
+	LUA->SetField(-2, "animFrameAccelAssist");
+	LUA->PushNumber(animInfo->animAccel);
+	LUA->SetField(-2, "animAccel");
+	QAngle rotation;
+	rotation.x = rot[0];
+	rotation.y = rot[1];
+	rotation.z = rot[2];
+	LUA->PushAngle(rotation);
+	LUA->SetField(-2, "rotation");
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioAnimTick)
+{
+	LUA->CheckType(1, Type::Table); // Animation info
+	LUA->CheckType(2, Type::Number); // Mario ID
+	LUA->CheckType(3, Type::Number); // Buffer index
+	LUA->CheckType(4, Type::Number); // State flags
+	LUA->CheckType(5, Type::Vector); // Vert offset
+
+	Vector offset = LUA->GetVector(-1);
+	uint32_t stateFlags = LUA->GetNumber(-2);
+	int bufferIndex = (int)LUA->GetNumber(-3);
+	int32_t marioId = (int32_t)LUA->GetNumber(-4);
+	LUA->Pop(4);
+
+
+	int refOffset = bufferIndex * 8;
+	
+	SM64AnimInfo animInfo;
+	LUA->GetField(-1, "animID");
+	animInfo.animID = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "animYTrans");
+	animInfo.animYTrans = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "curAnim");
+	animInfo.curAnim = (SM64Animation*)(uintptr_t)LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "animFrame");
+	animInfo.animFrame = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "animTimer");
+	animInfo.animTimer = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "animFrameAccelAssist");
+	animInfo.animFrameAccelAssist = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "animAccel");
+	animInfo.animAccel = LUA->GetNumber();
+	LUA->Pop();
+	LUA->GetField(-1, "rotation");
+	QAngle angle = LUA->GetAngle();
+	LUA->Pop();
+	
+	LUA->Pop();
+
+
+	SM64MarioState outState;
+
+	int16_t rot[3] = { angle.x, angle.y, angle.z };
+
+	sm64_mario_anim_tick(marioId, stateFlags, &animInfo, &mInfos[marioId].geoBuffers, rot);
+
+	GenerateGeoTable(marioId, refOffset, &mInfos[marioId].geoBuffers, offset);
+
+	LUA->ReferencePush(mInfos[marioId].references[5 + refOffset]); // Push vertex info table
+
+		LUA->PushNumber(1);
+		LUA->ReferencePush(mInfos[marioId].references[0 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(2);
+		LUA->ReferencePush(mInfos[marioId].references[1 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(3);
+		LUA->ReferencePush(mInfos[marioId].references[2 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(4);
+		LUA->ReferencePush(mInfos[marioId].references[3 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(5);
+		LUA->ReferencePush(mInfos[marioId].references[4 + refOffset]);
+		LUA->SetTable(-3);
+
+	mInfos[marioId].tickCount++;
+
 	return 1;
 }
 
 LUA_FUNCTION(MarioTick)
 {
-	LUA->CheckType(1, Type::Number);
-	LUA->CheckType(2, Type::Number);
-	LUA->CheckType(3, Type::Number);
-	LUA->CheckType(4, Type::Number);
-	LUA->CheckType(5, Type::Number);
-	LUA->CheckType(6, Type::Bool);
-	LUA->CheckType(7, Type::Bool);
-	LUA->CheckType(8, Type::Bool);
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Buffer index
+	LUA->CheckType(3, Type::Vector); // Facing vector
+	LUA->CheckType(4, Type::Vector); // Joystick vector
+	LUA->CheckType(5, Type::Bool);   // A button
+	LUA->CheckType(6, Type::Bool);   // B button
+	LUA->CheckType(7, Type::Bool);   // Z button
+
+	int32_t marioId = (int32_t)LUA->GetNumber(1);
+	int bufferIndex = (int)LUA->GetNumber(2);
+	int refOffset = bufferIndex * 8;
+
+	Vector facing = LUA->GetVector(3);
+	Vector joystick = LUA->GetVector(4);
 
 	SM64MarioInputs inputs;
-	inputs.camLookX = LUA->GetNumber(2);
-	inputs.camLookZ = LUA->GetNumber(3);
-	inputs.stickX = LUA->GetNumber(4);
-	inputs.stickY = LUA->GetNumber(5);
-	inputs.buttonA = LUA->GetBool(6);
-	inputs.buttonB = LUA->GetBool(7);
-	inputs.buttonZ = LUA->GetBool(8);
+	inputs.camLookX = -facing.x;
+	inputs.camLookZ = facing.y;
+	inputs.stickX = joystick.x;
+	inputs.stickY = joystick.z;
+	inputs.buttonA = LUA->GetBool(5);
+	inputs.buttonB = LUA->GetBool(6);
+	inputs.buttonZ = LUA->GetBool(7);
+	LUA->Pop(7);
 	SM64MarioState outState;
-	SM64MarioGeometryBuffers geoBuffers;
-	geoBuffers.position = new float[8192]();
-	geoBuffers.normal = new float[8192]();
-	geoBuffers.color = new float[8192]();
-	geoBuffers.uv = new float[8192]();
 
-	sm64_mario_tick((int32_t)LUA->GetNumber(1), &inputs, &outState, &geoBuffers);
+	sm64_mario_tick(marioId, &inputs, &outState, &mInfos[marioId].geoBuffers);
 
-	LUA->CreateTable();
-	
+	Vector offset;
+	offset.x = outState.position[0];
+	offset.y = -outState.position[2];
+	offset.z = -outState.position[1];
+
+	// Populate state info table
+	LUA->ReferencePush(mInfos[marioId].references[6 + refOffset]);
+		Vector marioPos;
+		marioPos.x = -outState.position[0] / scaleFactor;
+		marioPos.y = outState.position[2] / scaleFactor;
+		marioPos.z = outState.position[1] / scaleFactor;
 		LUA->PushNumber(1);
-		LUA->CreateTable();
-			Vector marioPos;
-			marioPos.x = outState.position[0] / scaleFactor;
-			marioPos.y = outState.position[2] / scaleFactor;
-			marioPos.z = outState.position[1] / scaleFactor;
-			LUA->PushNumber(1);
-			LUA->PushVector(marioPos);
-			LUA->SetTable(-3);
-
-			Vector marioVel;
-			marioVel.x = outState.velocity[0];
-			marioVel.y = outState.velocity[1];
-			marioVel.z = outState.velocity[2];
-			LUA->PushNumber(2);
-			LUA->PushVector(marioVel);
-			LUA->SetTable(-3);
-
-			LUA->PushNumber(3);
-			LUA->PushNumber(outState.faceAngle);
-			LUA->SetTable(-3);
-
-			LUA->PushNumber(4);
-			LUA->PushNumber(outState.health);
-			LUA->SetTable(-3);
+		LUA->PushVector(marioPos);
 		LUA->SetTable(-3);
 
+		Vector marioVel;
+		marioVel.x = -outState.velocity[0];
+		marioVel.y = outState.velocity[1];
+		marioVel.z = outState.velocity[2];
 		LUA->PushNumber(2);
-		LUA->CreateTable();
-	
-		for (int i = 0; i < geoBuffers.numTrianglesUsed*3; i++)
-		{
-			// Optimization? idk
-			int iTimes3 = i * 3;
-			int iTimes3Plus1 = iTimes3 + 1;
-			int iTimes3Plus2 = iTimes3 + 2;
-
-			LUA->PushNumber(i + 1);
-			LUA->CreateTable();
-				Vector pos;
-				pos.x = geoBuffers.position[  iTimes3   ] / scaleFactor;
-				pos.y = geoBuffers.position[iTimes3Plus2] / scaleFactor;
-				pos.z = geoBuffers.position[iTimes3Plus1] / scaleFactor;
-				LUA->PushNumber(1);
-				LUA->PushVector(pos);
-				LUA->SetTable(-3);
-
-				Vector norm;
-				norm.x = geoBuffers.normal[  iTimes3   ];
-				norm.y = geoBuffers.normal[iTimes3Plus2];
-				norm.z = geoBuffers.normal[iTimes3Plus1];
-				LUA->PushNumber(2);
-				LUA->PushVector(norm);
-				LUA->SetTable(-3);
-
-				float u = geoBuffers.uv[  i * 2  ] * 0.6875f;
-				float v = geoBuffers.uv[i * 2 + 1];
-				LUA->PushNumber(3);
-				LUA->PushNumber(u);
-				LUA->SetTable(-3);
-				LUA->PushNumber(4);
-				LUA->PushNumber(v);
-				LUA->SetTable(-3);
-
-				Vector col;
-				col.x = geoBuffers.color[  iTimes3   ]*255;
-				col.y = geoBuffers.color[iTimes3Plus1]*255;
-				col.z = geoBuffers.color[iTimes3Plus2]*255;
-				LUA->PushNumber(5);
-				LUA->PushVector(col);
-				LUA->SetTable(-3);
-			LUA->SetTable(-3);
-		}
+		LUA->PushVector(marioVel);
 		LUA->SetTable(-3);
 
-	free(geoBuffers.position);
-	geoBuffers.position = NULL;
-	free(geoBuffers.normal);
-	geoBuffers.normal = NULL;
-	free(geoBuffers.color);
-	geoBuffers.color = NULL;
-	free(geoBuffers.uv);
-	geoBuffers.uv = NULL;
+		LUA->PushNumber(3);
+		LUA->PushNumber(6.283185 - outState.faceAngle);
+		LUA->SetTable(-3);
 
-	return 1;
+		LUA->PushNumber(4);
+		LUA->PushNumber(outState.health);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(5);
+		LUA->PushNumber(outState.action);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(6);
+		LUA->PushNumber(outState.flags);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(7);
+		LUA->PushNumber(outState.particleFlags);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(8);
+		LUA->PushNumber(outState.invincTimer);
+		LUA->SetTable(-3);
+	LUA->Pop();
+
+	// Populate geometry table
+	GenerateGeoTable(marioId, refOffset, &mInfos[marioId].geoBuffers, offset);
+
+	LUA->ReferencePush(mInfos[marioId].references[7 + refOffset]); // Push tick result table
+
+	LUA->PushNumber(1);
+	LUA->ReferencePush(mInfos[marioId].references[6 + refOffset]); // Push state info table
+	LUA->SetTable(-3);
+
+	LUA->PushNumber(2);
+	LUA->ReferencePush(mInfos[marioId].references[5 + refOffset]); // Push vertex info table
+
+		LUA->PushNumber(1);
+		LUA->ReferencePush(mInfos[marioId].references[0 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(2);
+		LUA->ReferencePush(mInfos[marioId].references[1 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(3);
+		LUA->ReferencePush(mInfos[marioId].references[2 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(4);
+		LUA->ReferencePush(mInfos[marioId].references[3 + refOffset]);
+		LUA->SetTable(-3);
+		LUA->PushNumber(5);
+		LUA->ReferencePush(mInfos[marioId].references[4 + refOffset]);
+		LUA->SetTable(-3);
+
+	LUA->SetTable(-3);
+
+	mInfos[marioId].tickCount++;
+
+	return 0;
 }
 
 LUA_FUNCTION(MarioDelete)
 {
 	LUA->CheckType(1, Type::Number);
 
-	sm64_mario_delete((int32_t)LUA->GetNumber(1));
+	int32_t marioId = (int32_t)LUA->GetNumber(1);
+	sm64_mario_delete(marioId);
+	LUA->Pop();
+
+	free(mInfos[marioId].geoBuffers.position);
+	free(mInfos[marioId].geoBuffers.normal);
+	free(mInfos[marioId].geoBuffers.color);
+	free(mInfos[marioId].geoBuffers.uv);
+
+	if (mInfos.count(marioId))
+	{
+		for (int i = 0; i < mInfos[marioId].references.size(); i++)
+		{
+			if (mInfos[marioId].references[i] > 0)
+			{
+				LUA->ReferenceFree(mInfos[marioId].references[i]);
+			}
+		}
+		mInfos.erase(marioId);
+	}
+
+	LUA->ReferenceFree(animInfoRef);
 	
 	return 1;
 }
@@ -278,6 +758,7 @@ LUA_FUNCTION(SetMarioWaterLevel)
 	LUA->CheckType(2, Type::Number);
 
 	sm64_set_mario_water_level((int32_t)LUA->GetNumber(1), (signed int)LUA->GetNumber(2));
+	LUA->Pop(2);
 
 	return 1;
 }
@@ -288,7 +769,56 @@ LUA_FUNCTION(SetMarioPosition)
 	LUA->CheckType(2, Type::Vector);
 
 	Vector pos = LUA->GetVector(2);
-	sm64_set_mario_position((int32_t)LUA->GetNumber(1), (float)pos.x * scaleFactor, (float)pos.y * scaleFactor, (float)pos.z * scaleFactor);
+	sm64_set_mario_position((int32_t)LUA->GetNumber(1), -(float)pos.x * scaleFactor, (float)pos.z * scaleFactor, (float)pos.y * scaleFactor);
+	LUA->Pop(2);
+
+	return 1;
+}
+
+LUA_FUNCTION(SetMarioAction)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number);
+
+	sm64_set_mario_action((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
+LUA_FUNCTION(SetMarioState)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number);
+
+	sm64_set_mario_state((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
+LUA_FUNCTION(SetMarioFloorOverrides)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number); // Terrain type
+	LUA->CheckType(3, Type::Number); // Floor type
+
+	sm64_set_mario_floor_override((int32_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2), (int16_t)LUA->GetNumber(3));
+	LUA->Pop(3);
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioTakeDamage)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number); // Damage
+	LUA->CheckType(3, Type::Number); // Subtype
+	LUA->CheckType(4, Type::Vector); // Source Position
+
+	Vector srcPos = LUA->GetVector(4);
+	sm64_mario_take_damage((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint32_t)LUA->GetNumber(3), -srcPos.x * scaleFactor, srcPos.z * scaleFactor, srcPos.y * scaleFactor);
+	LUA->Pop(4);
 
 	return 1;
 }
@@ -297,6 +827,7 @@ LUA_FUNCTION(GetInputsFromButtonMask)
 {
 	LUA->CheckType(1, Type::Number);
 	int buttons = LUA->GetNumber(1);
+	LUA->Pop();
 
 	Vector joystick;
 	joystick.x = 0;
@@ -308,8 +839,8 @@ LUA_FUNCTION(GetInputsFromButtonMask)
 
 	if ((buttons & 8) == 8) { joystick.z--; }
 	if ((buttons & 16) == 16) { joystick.z++; }
-	if ((buttons & 1024) == 1024) { joystick.x--; }
-	if ((buttons & 512) == 512) { joystick.x++; }
+	if ((buttons & 1024) == 1024) { joystick.x++; }
+	if ((buttons & 512) == 512) { joystick.x--; }
 	if ((buttons & 2) == 2) { jump = true; }
 	if ((buttons & 1) == 1) { attack = true; }
 	if ((buttons & 4) == 4) { crouch = true; }
@@ -339,34 +870,47 @@ LUA_FUNCTION(GetInputsFromButtonMask)
 	return 1;
 }
 
+LUA_FUNCTION(GetMarioTableReference)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Reference index
+
+	int32_t marioId = LUA->GetNumber(1);
+	int refInd = LUA->GetNumber(2);
+	LUA->Pop(2);
+
+	LUA->ReferencePush(mInfos[marioId].references[refInd]);
+
+	return 1;
+}
+
 GMOD_MODULE_OPEN()
 {
 	GlobalLUA = LUA;
 
 	LUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
 	LUA->CreateTable();
-		LUA->PushCFunction(GlobalInit);
-		LUA->SetField(-2, "GlobalInit");
-		LUA->PushCFunction(IsGlobalInit);
-		LUA->SetField(-2, "IsGlobalInit");
-		LUA->PushCFunction(GlobalTerminate);
-		LUA->SetField(-2, "GlobalTerminate");
-		LUA->PushCFunction(SetScaleFactor);
-		LUA->SetField(-2, "SetScaleFactor");
-		LUA->PushCFunction(StaticSurfacesLoad);
-		LUA->SetField(-2, "StaticSurfacesLoad");
-		LUA->PushCFunction(MarioCreate);
-		LUA->SetField(-2, "MarioCreate");
-		LUA->PushCFunction(MarioDelete);
-		LUA->SetField(-2, "MarioDelete");
-		LUA->PushCFunction(MarioTick);
-		LUA->SetField(-2, "MarioTick");
-		LUA->PushCFunction(SetMarioWaterLevel);
-		LUA->SetField(-2, "SetMarioWaterLevel");
-		LUA->PushCFunction(SetMarioPosition);
-		LUA->SetField(-2, "SetMarioPosition");
-		LUA->PushCFunction(GetInputsFromButtonMask);
-		LUA->SetField(-2, "GetInputsFromButtonMask");
+		DEFINE_FUNCTION(GlobalInit);
+		DEFINE_FUNCTION(IsGlobalInit);
+		DEFINE_FUNCTION(GlobalTerminate);
+		DEFINE_FUNCTION(SetScaleFactor);
+		DEFINE_FUNCTION(StaticSurfacesLoad);
+		DEFINE_FUNCTION(MarioCreate);
+		DEFINE_FUNCTION(MarioDelete);
+		DEFINE_FUNCTION(MarioTick);
+		DEFINE_FUNCTION(MarioAnimTick);
+		DEFINE_FUNCTION(SetMarioWaterLevel);
+		DEFINE_FUNCTION(SetMarioPosition);
+		DEFINE_FUNCTION(GetInputsFromButtonMask);
+		DEFINE_FUNCTION(SetMarioAction);
+		DEFINE_FUNCTION(SetMarioState);
+		DEFINE_FUNCTION(SetMarioFloorOverrides);
+		DEFINE_FUNCTION(SurfaceObjectCreate);
+		DEFINE_FUNCTION(SurfaceObjectMove);
+		DEFINE_FUNCTION(SurfaceObjectDelete);
+		DEFINE_FUNCTION(MarioTakeDamage);
+		DEFINE_FUNCTION(GetMarioAnimInfo);
+		DEFINE_FUNCTION(GetMarioTableReference);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
@@ -375,12 +919,13 @@ GMOD_MODULE_OPEN()
 
 GMOD_MODULE_CLOSE()
 {
+	sm64_global_terminate();
+	isGlobalInit = false;
+
 	LUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
 	LUA->PushNil();
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
-	sm64_global_terminate();
-	isGlobalInit = false;
 	return 0;
 }
