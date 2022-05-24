@@ -85,7 +85,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>C:\Users\ckosmic\Documents\libsm64\dist\include;$(IncludePath)</IncludePath>
-    <ExternalIncludePath>C:\Users\ckosmic\Documents\libsm64-gmod\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>C:\Users\ckosmic\Documents\libsm64-gmod\libsm64-gmod\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LibraryPath>C:\Users\ckosmic\Documents\libsm64\dist;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

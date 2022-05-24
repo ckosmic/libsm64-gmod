@@ -3,6 +3,12 @@
 #include <string>
 #include <vector>
 #include <map>
+#if defined(_WIN32) && !defined(WIN32)
+#define WIN32
+#endif
+#if defined(WIN32)
+#include <Windows.h>
+#endif
 
 #include "GarrysMod/Lua/Interface.h"
 extern "C"
@@ -42,13 +48,13 @@ struct mInfo {
 	int prevNumTris;
 	int tickCount;
 	SM64MarioGeometryBuffers geoBuffers;
+	int animInfoRef = -1;
 };
 
 bool isGlobalInit = false;
 uint8_t textureData[4 * SM64_TEXTURE_WIDTH * SM64_TEXTURE_HEIGHT];
 double scaleFactor = 2.0;
 map<int32_t, mInfo> mInfos;
-int animInfoRef = -1;
 
 void debug_print(char* text)
 {
@@ -77,6 +83,40 @@ void debug_print(string text)
 	GlobalLUA->Pop();
 }
 
+float fixAngle(float a) {
+	return fmod(a + 180.0f, 360.0f) - 180.0f;
+}
+
+LUA_FUNCTION(OpenFileDialog)
+{
+#if defined(WIN32)
+	OPENFILENAME ofn = { 0 };
+	TCHAR szFile[260] = { 0 };
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = GetActiveWindow();
+	ofn.lpstrFile = szFile;
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = "Z64 Files (.z64)\0*.z64\0";
+	ofn.nFilterIndex = 0;
+	ofn.lpstrFileTitle = NULL;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	if (GetOpenFileName(&ofn) == TRUE)
+	{
+		LUA->PushString(ofn.lpstrFile);
+		return 1;
+	}
+	else {
+		LUA->PushNumber(0);
+		return 1;
+	}
+#endif
+	LUA->PushNumber(-1);
+	return 1;
+}
+
 LUA_FUNCTION(IsGlobalInit)
 {
 	LUA->PushBool(isGlobalInit);
@@ -86,6 +126,10 @@ LUA_FUNCTION(IsGlobalInit)
 vector<uint8_t> ReadBinaryFile(const char* fileName)
 {
 	ifstream infile(fileName, ios::binary);
+	if (infile.fail() || !infile.is_open())
+	{
+		return vector<uint8_t>();
+	}
 	infile.unsetf(ios::skipws);
 
 	infile.seekg(0, ios::end);
@@ -97,18 +141,26 @@ vector<uint8_t> ReadBinaryFile(const char* fileName)
 
 	vec.insert(vec.begin(), istream_iterator<uint8_t>(infile), istream_iterator<uint8_t>());
 
+	infile.close();
+
 	return vec;
 }
 
 LUA_FUNCTION(GlobalInit)
 {
-	vector<uint8_t> romFile = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\baserom.us.z64");
-	vector<uint8_t> bank_sets = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\bank_sets");
-	vector<uint8_t> sequences_bin = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sequences.bin");
-	vector<uint8_t> sound_data_ctl = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sound_data.ctl");
-	vector<uint8_t> sound_data_tbl = ReadBinaryFile("C:\\Users\\ckosmic\\Desktop\\sound_data.tbl");
+	LUA->CheckType(1, Type::String);
 
-	sm64_global_init(romFile.data(), bank_sets.data(), sequences_bin.data(), sound_data_ctl.data(), sound_data_tbl.data(), bank_sets.size(), sequences_bin.size(), sound_data_ctl.size(), sound_data_tbl.size(), textureData, (SM64DebugPrintFunctionPtr)&debug_print);
+	const char* path = LUA->GetString(1);
+	LUA->Pop();
+
+	vector<uint8_t> romFile = ReadBinaryFile(path);
+	if (romFile.empty())
+	{
+		LUA->PushBool(false);
+		return 1;
+	}
+
+	sm64_global_init(romFile.data(), textureData, (SM64DebugPrintFunctionPtr)&debug_print);
 
 	LUA->CreateTable();
 	for (int i = 0; i < sizeof(textureData); i += 4)
@@ -232,16 +284,20 @@ LUA_FUNCTION(SurfaceObjectCreate)
 	LUA->CheckType(1, Type::Table);
 	LUA->CheckType(2, Type::Vector);
 	LUA->CheckType(3, Type::Angle);
+	LUA->CheckType(4, Type::Number); // Surface type
+	LUA->CheckType(5, Type::Number); // Terrain type
 
-	QAngle angle = LUA->GetAngle(-1);
-	Vector position = LUA->GetVector(-2);
-	size_t tableSize = LUA->ObjLen(-3);
+	uint16_t terrain = LUA->GetNumber(-1);
+	int16_t type = LUA->GetNumber(-2);
+	QAngle angle = LUA->GetAngle(-3);
+	Vector position = LUA->GetVector(-4);
+	size_t tableSize = LUA->ObjLen(-5);
 	if (tableSize < 1 || tableSize % 3 != 0)
 	{
 		LUA->PushBool(false);
 		return 1;
 	}
-	LUA->Pop(2);
+	LUA->Pop(4);
 
 	vector<struct SM64Surface> surfaces;
 
@@ -260,7 +316,10 @@ LUA_FUNCTION(SurfaceObjectCreate)
 		Vector vert3Pos = LUA->GetVector();
 		LUA->Pop();
 
-		SM64Surface surface = { 0, 0, 0,
+		SM64Surface surface = {
+			type, // Surface type
+			0, // Force (unused?)
+			terrain, // Terrain type
 			{
 				{ -vert3Pos.x * scaleFactor, vert3Pos.z * scaleFactor, vert3Pos.y * scaleFactor },
 				{ -vert2Pos.x * scaleFactor, vert2Pos.z * scaleFactor, vert2Pos.y * scaleFactor },
@@ -273,7 +332,7 @@ LUA_FUNCTION(SurfaceObjectCreate)
 
 	SM64ObjectTransform objTransform = {
 		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
-		{ angle.z, 360-angle.y, angle.x }
+		{ fixAngle(angle.z), fixAngle(-angle.y), fixAngle(-angle.x) }
 	};
 
 	SM64SurfaceObject surfObject;
@@ -302,7 +361,7 @@ LUA_FUNCTION(SurfaceObjectMove)
 
 	SM64ObjectTransform objTransform = {
 		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
-		{ angle.z, 360-angle.y, angle.x }
+		{ fixAngle(angle.z), fixAngle(-angle.y), fixAngle(-angle.x) }
 	};
 
 	sm64_surface_object_move(surfaceId, &objTransform);
@@ -358,7 +417,7 @@ LUA_FUNCTION(MarioCreate)
 		}
 
 		LUA->CreateTable();
-		animInfoRef = LUA->ReferenceCreate(); // Anim info table
+		mInfos[marioId].animInfoRef = LUA->ReferenceCreate(); // Anim info table
 
 		mInfos[marioId].geoBuffers.position = new float[SM64_GEO_MAX_TRIANGLES * 3 * 3]();
 		mInfos[marioId].geoBuffers.normal = new float[SM64_GEO_MAX_TRIANGLES * 3 * 3]();
@@ -372,6 +431,8 @@ LUA_FUNCTION(MarioCreate)
 
 void GenerateGeoTable(int32_t marioId, int refOffset, SM64MarioGeometryBuffers* geoBuffers, Vector offset)
 {
+	Vector pos;
+	Vector norm;
 	int k = 2;
 	for (int i = 0; i < geoBuffers->numTrianglesUsed * 3; i++)
 	{
@@ -382,7 +443,6 @@ void GenerateGeoTable(int32_t marioId, int refOffset, SM64MarioGeometryBuffers* 
 		int iTimes3Plus2 = iTimes3 + 2;
 
 		GlobalLUA->ReferencePush(mInfos[marioId].references[0 + refOffset]);
-		Vector pos;
 		pos.x = (-geoBuffers->position[iTimes3] + offset.x) / scaleFactor;
 		pos.y = (geoBuffers->position[iTimes3Plus2] + offset.y) / scaleFactor;
 		pos.z = (geoBuffers->position[iTimes3Plus1] + offset.z) / scaleFactor - 5;
@@ -392,7 +452,6 @@ void GenerateGeoTable(int32_t marioId, int refOffset, SM64MarioGeometryBuffers* 
 		GlobalLUA->Pop();
 
 		GlobalLUA->ReferencePush(mInfos[marioId].references[1 + refOffset]);
-		Vector norm;
 		norm.x = -geoBuffers->normal[iTimes3];
 		norm.y = geoBuffers->normal[iTimes3Plus2];
 		norm.z = geoBuffers->normal[iTimes3Plus1];
@@ -454,7 +513,7 @@ void GenerateGeoTable(int32_t marioId, int refOffset, SM64MarioGeometryBuffers* 
 		if (k < 0) k = 2;
 	}
 
-	// Number of triangles changed, so empty the unused parts of the table or else lingering geometry will render
+	// Number of triangles changed, so empty the unused parts of the table or else lingering geometry will remain
 	if (geoBuffers->numTrianglesUsed < mInfos[marioId].prevNumTris)
 	{
 		for (int b = 0; b < 2; b++)
@@ -508,7 +567,7 @@ LUA_FUNCTION(GetMarioAnimInfo)
 
 	SM64AnimInfo* animInfo = sm64_mario_get_anim_info(marioId, rot);
 
-	LUA->ReferencePush(animInfoRef);
+	LUA->ReferencePush(mInfos[marioId].animInfoRef);
 
 	LUA->PushNumber(animInfo->animID);
 	LUA->SetField(-2, "animID");
@@ -744,10 +803,9 @@ LUA_FUNCTION(MarioDelete)
 				LUA->ReferenceFree(mInfos[marioId].references[i]);
 			}
 		}
+		LUA->ReferenceFree(mInfos[marioId].animInfoRef);
 		mInfos.erase(marioId);
 	}
-
-	LUA->ReferenceFree(animInfoRef);
 	
 	return 1;
 }
@@ -811,7 +869,7 @@ LUA_FUNCTION(SetMarioFloorOverrides)
 
 LUA_FUNCTION(MarioTakeDamage)
 {
-	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(1, Type::Number); // Mario ID
 	LUA->CheckType(2, Type::Number); // Damage
 	LUA->CheckType(3, Type::Number); // Subtype
 	LUA->CheckType(4, Type::Vector); // Source Position
@@ -819,6 +877,29 @@ LUA_FUNCTION(MarioTakeDamage)
 	Vector srcPos = LUA->GetVector(4);
 	sm64_mario_take_damage((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint32_t)LUA->GetNumber(3), -srcPos.x * scaleFactor, srcPos.z * scaleFactor, srcPos.y * scaleFactor);
 	LUA->Pop(4);
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioHeal)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Heal counter
+
+	sm64_mario_heal((int32_t)LUA->GetNumber(1), (uint8_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioEnableCap)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Cap flag
+	LUA->CheckType(3, Type::Number); // Cap timer
+
+	sm64_mario_interact_cap((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3));
+	LUA->Pop(2);
 
 	return 1;
 }
@@ -909,8 +990,11 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SurfaceObjectMove);
 		DEFINE_FUNCTION(SurfaceObjectDelete);
 		DEFINE_FUNCTION(MarioTakeDamage);
+		DEFINE_FUNCTION(MarioHeal);
+		DEFINE_FUNCTION(MarioEnableCap);
 		DEFINE_FUNCTION(GetMarioAnimInfo);
 		DEFINE_FUNCTION(GetMarioTableReference);
+		DEFINE_FUNCTION(OpenFileDialog);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
