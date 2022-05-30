@@ -27,6 +27,7 @@
     <ProjectGuid>{dea355dc-a65e-4e70-bb03-cda1f5272b0c}</ProjectGuid>
     <RootNamespace>libsm64gmod</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>g64</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -109,7 +110,7 @@
       <AdditionalDependencies>sm64.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /y /d "$(OutDir)\libsm64-gmod.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\libsm64-gmod.dll"</Command>
+      <Command>xcopy /y /d "$(OutDir)\g64.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\gmcl_g64_win32.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -149,7 +150,7 @@
       <AdditionalDependencies>sm64.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy "$(OutDir)libsm64-gmod.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\gmcl_libsm64-gmod_win64.dll"</Command>
+      <Command>copy "$(OutDir)g64.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\gmcl_g64_win64.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

@@ -16,12 +16,14 @@ extern "C"
 #include "libsm64.h"
 }
 
+#define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
+#define MODULE_VERSION 1
+#define REQUIRE_LIB 1
+
 using namespace std;
 using namespace GarrysMod::Lua;
 
 ILuaBase* GlobalLUA;
-
-#define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
 
 const int SM64_MAX_HEALTH = 8;
 
@@ -85,6 +87,35 @@ void debug_print(string text)
 
 float fixAngle(float a) {
 	return fmod(a + 180.0f, 360.0f) - 180.0f;
+}
+
+LUA_FUNCTION(CheckLibRequirement)
+{
+	if (LIB_VERSION == REQUIRE_LIB)
+	{
+		LUA->PushNumber(0);
+	}
+	else if (LIB_VERSION > REQUIRE_LIB)
+	{
+		LUA->PushNumber(1);
+	}
+	else if (LIB_VERSION < REQUIRE_LIB)
+	{
+		LUA->PushNumber(2);
+	}
+	return 1;
+}
+
+LUA_FUNCTION(GetModuleVersion)
+{
+	LUA->PushNumber(MODULE_VERSION);
+	return 1;
+}
+
+LUA_FUNCTION(GetLibVersion)
+{
+	LUA->PushNumber(LIB_VERSION);
+	return 1;
 }
 
 LUA_FUNCTION(OpenFileDialog)
@@ -867,6 +898,17 @@ LUA_FUNCTION(SetMarioFloorOverrides)
 	return 1;
 }
 
+LUA_FUNCTION(SetMarioHealth)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number);
+
+	sm64_set_mario_health((int32_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
 LUA_FUNCTION(MarioTakeDamage)
 {
 	LUA->CheckType(1, Type::Number); // Mario ID
@@ -897,8 +939,9 @@ LUA_FUNCTION(MarioEnableCap)
 	LUA->CheckType(1, Type::Number); // Mario ID
 	LUA->CheckType(2, Type::Number); // Cap flag
 	LUA->CheckType(3, Type::Number); // Cap timer
+	LUA->CheckType(4, Type::Bool); // Cap timer
 
-	sm64_mario_interact_cap((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3));
+	sm64_mario_interact_cap((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3), LUA->GetBool(4));
 	LUA->Pop(2);
 
 	return 1;
@@ -965,6 +1008,35 @@ LUA_FUNCTION(GetMarioTableReference)
 	return 1;
 }
 
+LUA_FUNCTION(PlayMusic)
+{
+	LUA->CheckType(1, Type::Number); // Player
+	LUA->CheckType(2, Type::Number); // Seq Args
+	LUA->CheckType(3, Type::Number); // Fade timer
+
+	sm64_play_music((uint8_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3));
+	LUA->Pop(3);
+
+	return 1;
+}
+
+LUA_FUNCTION(StopMusic)
+{
+	LUA->CheckType(1, Type::Number); // Seq ID
+
+	sm64_stop_background_music((uint16_t)LUA->GetNumber(1));
+	LUA->Pop(1);
+
+	return 1;
+}
+
+LUA_FUNCTION(GetCurrentMusic)
+{
+	LUA->PushNumber(sm64_get_current_background_music());
+
+	return 1;
+}
+
 GMOD_MODULE_OPEN()
 {
 	GlobalLUA = LUA;
@@ -986,6 +1058,7 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SetMarioAction);
 		DEFINE_FUNCTION(SetMarioState);
 		DEFINE_FUNCTION(SetMarioFloorOverrides);
+		DEFINE_FUNCTION(SetMarioHealth);
 		DEFINE_FUNCTION(SurfaceObjectCreate);
 		DEFINE_FUNCTION(SurfaceObjectMove);
 		DEFINE_FUNCTION(SurfaceObjectDelete);
@@ -995,6 +1068,12 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(GetMarioAnimInfo);
 		DEFINE_FUNCTION(GetMarioTableReference);
 		DEFINE_FUNCTION(OpenFileDialog);
+		DEFINE_FUNCTION(PlayMusic);
+		DEFINE_FUNCTION(StopMusic);
+		DEFINE_FUNCTION(GetCurrentMusic);
+		DEFINE_FUNCTION(GetLibVersion);
+		DEFINE_FUNCTION(GetModuleVersion);
+		DEFINE_FUNCTION(CheckLibRequirement);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
