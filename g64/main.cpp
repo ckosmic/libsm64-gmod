@@ -17,7 +17,7 @@ extern "C"
 }
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
-#define MODULE_VERSION 1
+#define MODULE_VERSION 2
 #define REQUIRE_LIB 1
 
 using namespace std;
@@ -136,7 +136,7 @@ LUA_FUNCTION(OpenFileDialog)
 
 	if (GetOpenFileName(&ofn) == TRUE)
 	{
-		LUA->PushString(ofn.lpstrFile);
+		LUA->PushString((const char*)ofn.lpstrFile);
 		return 1;
 	}
 	else {
