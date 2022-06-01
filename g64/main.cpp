@@ -15,10 +15,11 @@ extern "C"
 {
 #include "libsm64.h"
 }
+#include "utils.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
 #define MODULE_VERSION 2
-#define REQUIRE_LIB 1
+#define REQUIRE_LIB 2
 
 using namespace std;
 using namespace GarrysMod::Lua;
