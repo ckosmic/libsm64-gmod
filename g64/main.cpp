@@ -15,11 +15,10 @@ extern "C"
 {
 #include "libsm64.h"
 }
-#include "utils.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
 #define MODULE_VERSION 2
-#define REQUIRE_LIB 2
+#define REQUIRE_LIB 3
 
 using namespace std;
 using namespace GarrysMod::Lua;
@@ -943,7 +942,22 @@ LUA_FUNCTION(MarioEnableCap)
 	LUA->CheckType(4, Type::Bool); // Cap timer
 
 	sm64_mario_interact_cap((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3), LUA->GetBool(4));
-	LUA->Pop(2);
+	LUA->Pop(4);
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioAttack)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Vector); // Enemy position
+	LUA->CheckType(3, Type::Number); // Hitbox height
+
+	Vector pos = LUA->GetVector(2);
+
+	bool succeeded = sm64_mario_attack((int32_t)LUA->GetNumber(1), -pos.x * scaleFactor, pos.z * scaleFactor, pos.y * scaleFactor, (float)LUA->GetNumber(3) * scaleFactor);
+	LUA->Pop(3);
+	LUA->PushBool(succeeded);
 
 	return 1;
 }
@@ -1009,6 +1023,31 @@ LUA_FUNCTION(GetMarioTableReference)
 	return 1;
 }
 
+LUA_FUNCTION(GetSoundArg)
+{
+	LUA->CheckType(1, Type::Number); // Bank
+	LUA->CheckType(2, Type::Number); // Play flags
+	LUA->CheckType(3, Type::Number); // Sound ID
+	LUA->CheckType(4, Type::Number); // Priority
+	LUA->CheckType(5, Type::Number); // Flags2
+
+	uint32_t soundArg = sm64_get_sound_arg((uint32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint32_t)LUA->GetNumber(3), (uint32_t)LUA->GetNumber(4), (uint32_t)LUA->GetNumber(5));
+	LUA->Pop(5);
+	LUA->PushNumber(soundArg);
+
+	return 1;
+}
+
+LUA_FUNCTION(PlaySoundGlobal)
+{
+	LUA->CheckType(1, Type::Number); // Sound bits
+
+	sm64_play_sound_global((int32_t)LUA->GetNumber(1));
+	LUA->Pop(1);
+
+	return 1;
+}
+
 LUA_FUNCTION(PlayMusic)
 {
 	LUA->CheckType(1, Type::Number); // Player
@@ -1034,6 +1073,16 @@ LUA_FUNCTION(StopMusic)
 LUA_FUNCTION(GetCurrentMusic)
 {
 	LUA->PushNumber(sm64_get_current_background_music());
+
+	return 1;
+}
+
+LUA_FUNCTION(SetGlobalVolume)
+{
+	LUA->CheckType(1, Type::Number); // Volume
+
+	sm64_set_volume((float)LUA->GetNumber(1));
+	LUA->Pop(1);
 
 	return 1;
 }
@@ -1066,15 +1115,19 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(MarioTakeDamage);
 		DEFINE_FUNCTION(MarioHeal);
 		DEFINE_FUNCTION(MarioEnableCap);
+		DEFINE_FUNCTION(MarioAttack);
 		DEFINE_FUNCTION(GetMarioAnimInfo);
 		DEFINE_FUNCTION(GetMarioTableReference);
 		DEFINE_FUNCTION(OpenFileDialog);
+		DEFINE_FUNCTION(GetSoundArg);
+		DEFINE_FUNCTION(PlaySoundGlobal);
 		DEFINE_FUNCTION(PlayMusic);
 		DEFINE_FUNCTION(StopMusic);
 		DEFINE_FUNCTION(GetCurrentMusic);
 		DEFINE_FUNCTION(GetLibVersion);
 		DEFINE_FUNCTION(GetModuleVersion);
 		DEFINE_FUNCTION(CheckLibRequirement);
+		DEFINE_FUNCTION(SetGlobalVolume);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
