@@ -15,10 +15,10 @@ extern "C"
 {
 #include "libsm64.h"
 }
+#include "utils.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
-#define MODULE_VERSION 2
-#define REQUIRE_LIB 3
+#define PACKAGE_VERSION "0.0.4"
 
 using namespace std;
 using namespace GarrysMod::Lua;
@@ -26,15 +26,6 @@ using namespace GarrysMod::Lua;
 ILuaBase* GlobalLUA;
 
 const int SM64_MAX_HEALTH = 8;
-
-//const int DEFAULT_MARIO_COLORS[6][3] = {
-//	{ 0, 0, 255 },
-//	{ 114, 28, 14 },
-//	{ 115, 6, 0 },
-//	{ 254, 193, 121 },
-//	{ 255, 0, 0 },
-//	{ 255, 255, 255 },
-//};
 
 float marioColorLUT[6][3] = {
 	{ -1.0, 0.0, 0.0 },
@@ -57,6 +48,8 @@ bool isGlobalInit = false;
 uint8_t textureData[4 * SM64_TEXTURE_WIDTH * SM64_TEXTURE_HEIGHT];
 double scaleFactor = 2.0;
 map<int32_t, mInfo> mInfos;
+bool autoUpdatesOn = false;
+bool needsToUpdate = false;
 
 void debug_print(char* text)
 {
@@ -89,32 +82,57 @@ float fixAngle(float a) {
 	return fmod(a + 180.0f, 360.0f) - 180.0f;
 }
 
-LUA_FUNCTION(CheckLibRequirement)
+LUA_FUNCTION(GetPackageVersion)
 {
-	if (LIB_VERSION == REQUIRE_LIB)
-	{
-		LUA->PushNumber(0);
-	}
-	else if (LIB_VERSION > REQUIRE_LIB)
-	{
-		LUA->PushNumber(1);
-	}
-	else if (LIB_VERSION < REQUIRE_LIB)
-	{
-		LUA->PushNumber(2);
-	}
-	return 1;
-}
-
-LUA_FUNCTION(GetModuleVersion)
-{
-	LUA->PushNumber(MODULE_VERSION);
+	LUA->PushString(PACKAGE_VERSION);
 	return 1;
 }
 
 LUA_FUNCTION(GetLibVersion)
 {
 	LUA->PushNumber(LIB_VERSION);
+	return 1;
+}
+
+LUA_FUNCTION(SetAutoUpdateState)
+{
+	LUA->CheckType(1, Type::Bool);
+
+	autoUpdatesOn = LUA->GetBool(1);
+	LUA->Pop();
+
+	return 1;
+}
+
+LUA_FUNCTION(CompareVersions)
+{
+	LUA->CheckType(1, Type::String); // Local version
+	LUA->CheckType(2, Type::String); // Remote version
+
+	const char* local = LUA->GetString(1);
+	const char* remote = LUA->GetString(2);
+	LUA->Pop(2);
+
+	int result = version_compare(local, remote);
+	if (result < 0)
+	{
+		// Local is out of date, needs to update
+		needsToUpdate = true;
+		LUA->PushNumber(0);
+	}
+	else if (result > 0)
+	{
+		// Local is over dated, how.
+		needsToUpdate = false;
+		LUA->PushNumber(1);
+	}
+	else
+	{
+		// Up to date
+		needsToUpdate = false;
+		LUA->PushNumber(2);
+	}
+
 	return 1;
 }
 
@@ -1125,8 +1143,9 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(StopMusic);
 		DEFINE_FUNCTION(GetCurrentMusic);
 		DEFINE_FUNCTION(GetLibVersion);
-		DEFINE_FUNCTION(GetModuleVersion);
-		DEFINE_FUNCTION(CheckLibRequirement);
+		DEFINE_FUNCTION(GetPackageVersion);
+		DEFINE_FUNCTION(SetAutoUpdateState);
+		DEFINE_FUNCTION(CompareVersions);
 		DEFINE_FUNCTION(SetGlobalVolume);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
@@ -1143,6 +1162,9 @@ GMOD_MODULE_CLOSE()
 	LUA->PushNil();
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
+
+	if(autoUpdatesOn && needsToUpdate)
+		run_updater_script();
 
 	return 0;
 }
