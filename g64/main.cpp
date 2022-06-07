@@ -433,6 +433,57 @@ LUA_FUNCTION(SurfaceObjectDelete)
 	return 1;
 }
 
+LUA_FUNCTION(ObjectCreate)
+{
+	LUA->CheckType(1, Type::Vector);
+	LUA->CheckType(2, Type::Number);
+	LUA->CheckType(3, Type::Number);
+
+	Vector pos = LUA->GetVector(1);
+	float height = LUA->GetNumber(2);
+	float radius = LUA->GetNumber(3);
+	LUA->Pop(3);
+
+	SM64ObjectCollider* collider = (SM64ObjectCollider*)malloc(sizeof(SM64ObjectCollider));
+	collider->position[0] = -pos.x * scaleFactor;
+	collider->position[1] = pos.z * scaleFactor;
+	collider->position[2] = pos.y * scaleFactor;
+	collider->height = height * scaleFactor;
+	collider->radius = radius * scaleFactor;
+
+	uint32_t id = sm64_object_create(collider);
+
+	LUA->PushNumber(id);
+
+	return 1;
+}
+
+LUA_FUNCTION(ObjectMove)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Vector);
+
+	uint32_t id = LUA->GetNumber(1);
+	Vector pos = LUA->GetVector(2);
+	LUA->Pop(2);
+
+	sm64_object_move(id, -pos.x * scaleFactor, pos.z * scaleFactor, pos.y * scaleFactor);
+
+	return 1;
+}
+
+LUA_FUNCTION(ObjectDelete)
+{
+	LUA->CheckType(1, Type::Number);
+
+	uint32_t id = LUA->GetNumber(1);
+	LUA->Pop();
+
+	sm64_object_delete(id);
+
+	return 1;
+}
+
 LUA_FUNCTION(MarioCreate)
 {
 	LUA->CheckType(1, Type::Vector);
@@ -1130,6 +1181,9 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SurfaceObjectCreate);
 		DEFINE_FUNCTION(SurfaceObjectMove);
 		DEFINE_FUNCTION(SurfaceObjectDelete);
+		DEFINE_FUNCTION(ObjectCreate);
+		DEFINE_FUNCTION(ObjectMove);
+		DEFINE_FUNCTION(ObjectDelete);
 		DEFINE_FUNCTION(MarioTakeDamage);
 		DEFINE_FUNCTION(MarioHeal);
 		DEFINE_FUNCTION(MarioEnableCap);
