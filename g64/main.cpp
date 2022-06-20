@@ -18,7 +18,7 @@ extern "C"
 #include "utils.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
-#define PACKAGE_VERSION "0.0.4"
+#define PACKAGE_VERSION "0.0.6"
 
 using namespace std;
 using namespace GarrysMod::Lua;
@@ -308,13 +308,13 @@ LUA_FUNCTION(StaticSurfacesLoad)
 		LUA->GetTable(-2);
 		Vector vert3Pos = LUA->GetVector();
 		LUA->Pop();
-		
-		SM64Surface surface = { 0, 0, 0, 
+
+		SM64Surface surface = { 0, 0, 0,
 			{
 				{ -vert3Pos.x * scaleFactor, vert3Pos.z * scaleFactor, vert3Pos.y * scaleFactor },
 				{ -vert2Pos.x * scaleFactor, vert2Pos.z * scaleFactor, vert2Pos.y * scaleFactor },
 				{ -vert1Pos.x * scaleFactor, vert1Pos.z * scaleFactor, vert1Pos.y * scaleFactor }
-			} 
+			}
 		};
 		surfaces.push_back(surface);
 	}
@@ -921,6 +921,17 @@ LUA_FUNCTION(SetMarioWaterLevel)
 	return 1;
 }
 
+LUA_FUNCTION(SetMarioInvincibility)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number);
+
+	sm64_set_mario_invincibility((int32_t)LUA->GetNumber(1), (int16_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
 LUA_FUNCTION(SetMarioPosition)
 {
 	LUA->CheckType(1, Type::Number);
@@ -928,6 +939,17 @@ LUA_FUNCTION(SetMarioPosition)
 
 	Vector pos = LUA->GetVector(2);
 	sm64_set_mario_position((int32_t)LUA->GetNumber(1), -(float)pos.x * scaleFactor, (float)pos.z * scaleFactor, (float)pos.y * scaleFactor);
+	LUA->Pop(2);
+
+	return 1;
+}
+
+LUA_FUNCTION(SetMarioAngle)
+{
+	LUA->CheckType(1, Type::Number);
+	LUA->CheckType(2, Type::Number);
+
+	sm64_set_mario_angle((int32_t)LUA->GetNumber(1), (float)LUA->GetNumber(2));
 	LUA->Pop(2);
 
 	return 1;
@@ -960,9 +982,10 @@ LUA_FUNCTION(SetMarioFloorOverrides)
 	LUA->CheckType(1, Type::Number);
 	LUA->CheckType(2, Type::Number); // Terrain type
 	LUA->CheckType(3, Type::Number); // Floor type
+	LUA->CheckType(4, Type::Number); // Floor force
 
-	sm64_set_mario_floor_override((int32_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2), (int16_t)LUA->GetNumber(3));
-	LUA->Pop(3);
+	sm64_set_mario_floor_override((int32_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2), (int16_t)LUA->GetNumber(3), (int16_t)LUA->GetNumber(4));
+	LUA->Pop(4);
 
 	return 1;
 }
@@ -1012,6 +1035,17 @@ LUA_FUNCTION(MarioEnableCap)
 
 	sm64_mario_interact_cap((int32_t)LUA->GetNumber(1), (uint32_t)LUA->GetNumber(2), (uint16_t)LUA->GetNumber(3), LUA->GetBool(4));
 	LUA->Pop(4);
+
+	return 1;
+}
+
+LUA_FUNCTION(MarioExtendCapTime)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Cap time
+
+	sm64_mario_extend_cap((int32_t)LUA->GetNumber(1), (uint16_t)LUA->GetNumber(2));
+	LUA->Pop(2);
 
 	return 1;
 }
@@ -1172,7 +1206,9 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(MarioTick);
 		DEFINE_FUNCTION(MarioAnimTick);
 		DEFINE_FUNCTION(SetMarioWaterLevel);
+		DEFINE_FUNCTION(SetMarioInvincibility);
 		DEFINE_FUNCTION(SetMarioPosition);
+		DEFINE_FUNCTION(SetMarioAngle);
 		DEFINE_FUNCTION(GetInputsFromButtonMask);
 		DEFINE_FUNCTION(SetMarioAction);
 		DEFINE_FUNCTION(SetMarioState);
@@ -1187,6 +1223,7 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(MarioTakeDamage);
 		DEFINE_FUNCTION(MarioHeal);
 		DEFINE_FUNCTION(MarioEnableCap);
+		DEFINE_FUNCTION(MarioExtendCapTime);
 		DEFINE_FUNCTION(MarioAttack);
 		DEFINE_FUNCTION(GetMarioAnimInfo);
 		DEFINE_FUNCTION(GetMarioTableReference);
