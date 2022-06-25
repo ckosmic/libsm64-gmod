@@ -8,6 +8,8 @@
 #endif
 #if defined(WIN32)
 #include <Windows.h>
+#include <direct.h>
+#define GetCurrentDir _getcwd
 #endif
 
 #include "GarrysMod/Lua/Interface.h"
@@ -18,7 +20,10 @@ extern "C"
 #include "utils.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
-#define PACKAGE_VERSION "0.0.6"
+#define PACKAGE_VERSION "0.1.1"
+
+#define READ(a) f.read(reinterpret_cast<char*>(&a), sizeof(a));
+#define READ_INTO(a, s) f.read(reinterpret_cast<char*>(&a), sizeof(a)); LUA->PushNumber(a); LUA->SetField(-2, s);
 
 using namespace std;
 using namespace GarrysMod::Lua;
@@ -166,12 +171,6 @@ LUA_FUNCTION(OpenFileDialog)
 	return 1;
 }
 
-LUA_FUNCTION(IsGlobalInit)
-{
-	LUA->PushBool(isGlobalInit);
-	return 1;
-}
-
 vector<uint8_t> ReadBinaryFile(const char* fileName)
 {
 	ifstream infile(fileName, ios::binary);
@@ -193,6 +192,127 @@ vector<uint8_t> ReadBinaryFile(const char* fileName)
 	infile.close();
 
 	return vec;
+}
+
+LUA_FUNCTION(LoadMapCache)
+{
+	LUA->CheckType(1, Type::String); // Filename
+	LUA->CheckType(2, Type::Number); // Filename
+
+	const char* filename = LUA->GetString(1);
+	uint32_t desiredVersion = LUA->GetNumber(2);
+	char buff[FILENAME_MAX];
+	GetCurrentDir(buff, FILENAME_MAX);
+	string path = string(buff) + "\\garrysmod\\data\\" + string(filename);
+
+	LUA->Pop(2);
+
+	LUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+	LUA->GetField(-1, "libsm64");
+
+	ifstream f(path.c_str(), ios::in | ios::binary);
+	if (f.is_open())
+	{
+		uint32_t version;
+		READ_INTO(version, "MapCacheVersion");
+		if (version != desiredVersion)
+		{
+			LUA->PushBool(false);
+			return 1;
+		}
+		int16_t xDelta;
+		READ_INTO(xDelta, "XDelta");
+		int16_t yDelta;
+		READ_INTO(yDelta, "YDelta");
+		int16_t x, y, z;
+		READ(x); READ(y); READ(z);
+		Vector worldMin;
+		worldMin.x = x;
+		worldMin.y = y;
+		worldMin.z = z;
+		LUA->PushVector(worldMin);
+		LUA->SetField(-2, "WorldMin");
+		READ(x); READ(y); READ(z);
+		Vector worldMax;
+		worldMax.x = x;
+		worldMax.y = y;
+		worldMax.z = z;
+		LUA->PushVector(worldMax);
+		LUA->SetField(-2, "WorldMax");
+		uint16_t xChunks;
+		READ_INTO(xChunks, "XChunks");
+		uint16_t yChunks;
+		READ_INTO(yChunks, "YChunks");
+		uint16_t xDispChunks;
+		READ_INTO(xDispChunks, "XDispChunks");
+		uint16_t yDispChunks;
+		READ_INTO(yDispChunks, "YDispChunks");
+
+		// Map phys vertices table
+		LUA->CreateTable();
+
+		for (int x = 0; x < xChunks; x++)
+		{
+			LUA->PushNumber(x + 1);
+			LUA->CreateTable();
+			for (int y = 0; y < yChunks; y++)
+			{
+				uint32_t chunkSize;
+				READ(chunkSize);
+				LUA->PushNumber(y + 1);
+				LUA->CreateTable();
+				for (int i = 0; i < chunkSize; i++)
+				{
+					Vector vert;
+					READ(vert.x); READ(vert.y); READ(vert.z);
+					LUA->PushNumber(i + 1);
+					LUA->PushVector(vert);
+					LUA->SetTable(-3);
+				}
+				LUA->SetTable(-3);
+			}
+			LUA->SetTable(-3);
+		}
+		LUA->SetField(-2, "MapVertices");
+
+		// Displacement vertices table
+		LUA->CreateTable();
+
+		for (int x = 0; x < xDispChunks; x++)
+		{
+			LUA->PushNumber(x + 1);
+			LUA->CreateTable();
+			for (int y = 0; y < yDispChunks; y++)
+			{
+				uint32_t chunkSize;
+				READ(chunkSize);
+				LUA->PushNumber(y + 1);
+				LUA->CreateTable();
+				for (int i = 0; i < chunkSize; i++)
+				{
+					Vector vert;
+					READ(vert.x); READ(vert.y); READ(vert.z);
+					LUA->PushNumber(i + 1);
+					LUA->PushVector(vert);
+					LUA->SetTable(-3);
+				}
+				LUA->SetTable(-3);
+			}
+			LUA->SetTable(-3);
+		}
+		LUA->SetField(-2, "DispVertices");
+	}
+
+	LUA->Pop();
+	
+	LUA->PushBool(true);
+	return 1;
+}
+
+LUA_FUNCTION(IsGlobalInit)
+{
+	LUA->PushBool(isGlobalInit);
+	return 1;
 }
 
 LUA_FUNCTION(GlobalInit)
@@ -1065,53 +1185,6 @@ LUA_FUNCTION(MarioAttack)
 	return 1;
 }
 
-LUA_FUNCTION(GetInputsFromButtonMask)
-{
-	LUA->CheckType(1, Type::Number);
-	int buttons = LUA->GetNumber(1);
-	LUA->Pop();
-
-	Vector joystick;
-	joystick.x = 0;
-	joystick.y = 0;
-	joystick.z = 0;
-	bool jump = false;
-	bool attack = false;
-	bool crouch = false;
-
-	if ((buttons & 8) == 8) { joystick.z--; }
-	if ((buttons & 16) == 16) { joystick.z++; }
-	if ((buttons & 1024) == 1024) { joystick.x++; }
-	if ((buttons & 512) == 512) { joystick.x--; }
-	if ((buttons & 2) == 2) { jump = true; }
-	if ((buttons & 1) == 1) { attack = true; }
-	if ((buttons & 4) == 4) { crouch = true; }
-
-	// Normalize joystick inputs
-	float magnitude = sqrt((joystick.x * joystick.x) + (joystick.z * joystick.z));
-	if (magnitude > 0)
-	{
-		joystick.x /= magnitude;
-		joystick.z /= magnitude;
-	}
-
-	LUA->CreateTable();
-	LUA->PushNumber(1);
-	LUA->PushVector(joystick);
-	LUA->SetTable(-3);
-	LUA->PushNumber(2);
-	LUA->PushBool(jump);
-	LUA->SetTable(-3);
-	LUA->PushNumber(3);
-	LUA->PushBool(attack);
-	LUA->SetTable(-3);
-	LUA->PushNumber(4);
-	LUA->PushBool(crouch);
-	LUA->SetTable(-3);
-
-	return 1;
-}
-
 LUA_FUNCTION(GetMarioTableReference)
 {
 	LUA->CheckType(1, Type::Number); // Mario ID
@@ -1209,7 +1282,6 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SetMarioInvincibility);
 		DEFINE_FUNCTION(SetMarioPosition);
 		DEFINE_FUNCTION(SetMarioAngle);
-		DEFINE_FUNCTION(GetInputsFromButtonMask);
 		DEFINE_FUNCTION(SetMarioAction);
 		DEFINE_FUNCTION(SetMarioState);
 		DEFINE_FUNCTION(SetMarioFloorOverrides);
@@ -1238,6 +1310,7 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SetAutoUpdateState);
 		DEFINE_FUNCTION(CompareVersions);
 		DEFINE_FUNCTION(SetGlobalVolume);
+		DEFINE_FUNCTION(LoadMapCache);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
 
