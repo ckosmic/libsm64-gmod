@@ -2,6 +2,8 @@
 #include <iostream>
 #include <filesystem>
 #include <Windows.h>
+#include "GarrysMod/Lua/Interface.h"
+#include "utils.h"
 
 using namespace std;
 
@@ -68,4 +70,25 @@ void run_updater_script()
 	{
 		system("calc.exe");
 	}
+}
+
+QAngle angle_from_quaternion(float x, float y, float z, float w)
+{
+    QAngle ang;
+
+    float t0 = 2.0 * (w * x + y * z);
+    float t1 = 1.0 - 2.0 * (x * x + y * y);
+    ang.z = atan2(t0, t1);
+
+    float t2 = 2.0 * (w * y - z * x);
+    if (abs(t2) >= 1.0)
+        ang.y = copysign(3.1415 / 2, t2);
+    if (t2 < -1.0)
+        ang.y = asin(t2);
+
+    float t3 = 2.0 * (w * z + x * y);
+    float t4 = 1.0 - 2.0 * (y * y + z * z);
+    ang.x = atan2(t3, t4);
+
+    return ang;
 }

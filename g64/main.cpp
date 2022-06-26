@@ -83,8 +83,12 @@ void debug_print(string text)
 	GlobalLUA->Pop();
 }
 
+float n_fmod(float a, float b) {
+	return a - b * floor(a / b);
+}
+
 float fixAngle(float a) {
-	return fmod(a + 180.0f, 360.0f) - 180.0f;
+	return n_fmod(a + 180.0f, 360.0f) - 180.0f;
 }
 
 LUA_FUNCTION(GetPackageVersion)
@@ -501,7 +505,7 @@ LUA_FUNCTION(SurfaceObjectCreate)
 
 	SM64ObjectTransform objTransform = {
 		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
-		{ fixAngle(angle.z), fixAngle(-angle.y), fixAngle(-angle.x) }
+		{ angle.z, -angle.y, -angle.x }
 	};
 
 	SM64SurfaceObject surfObject;
@@ -525,12 +529,33 @@ LUA_FUNCTION(SurfaceObjectMove)
 	uint32_t surfaceId = LUA->GetNumber(1);
 	Vector position = LUA->GetVector(2);
 	QAngle angle = LUA->GetAngle(3);
-
 	LUA->Pop(3);
+	//QAngle fixedAngle;
+	//fixedAngle.x = angle.y;
+	//fixedAngle.y = angle.x;
+	//fixedAngle.z = angle.z;
+
+	//float4 quat = quatFromAngle(fixedAngle);
+	
+	//double deg2rad = (3.14159265358979323846 / 180.0);
+	//double rad2deg = (180.0 / 3.14159265358979323846);
+	//
+	//Eigen::Quaternionf q;
+	//q = Eigen::AngleAxisf(angle.x * deg2rad, Eigen::Vector3f::UnitX()) *
+	//	Eigen::AngleAxisf(angle.y * deg2rad, Eigen::Vector3f::UnitY()) *
+	//	Eigen::AngleAxisf(angle.z * deg2rad, Eigen::Vector3f::UnitZ());
+	////Eigen::Quaternionf q2(q.y(), q.z(), q.w(), q.x());
+	//Eigen::Quaternionf q2(quat.z, quat.y, quat.x, quat.w);
+	//Eigen::Vector3f euler = q2.toRotationMatrix().eulerAngles(0,1,2);
+
+	//char buf[2048];
+	//sprintf_s(buf, "%f %f %f", fixAngle(angle.z), -fixAngle(angle.y), -fixAngle(angle.x));
+	//sprintf_s(buf, "%f %f %f %f", quat.z, quat.y, quat.x, quat.w);
+	//debug_print(buf);
 
 	SM64ObjectTransform objTransform = {
 		{ -position.x * scaleFactor, position.z * scaleFactor, position.y * scaleFactor },
-		{ fixAngle(angle.z), fixAngle(-angle.y), fixAngle(-angle.x) }
+		{ angle.z, -angle.y, -angle.x }
 	};
 
 	sm64_surface_object_move(surfaceId, &objTransform);
