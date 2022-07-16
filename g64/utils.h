@@ -4,6 +4,11 @@
 #include <filesystem>
 #include <Windows.h>
 
+extern "C"
+{
+#include "libsm64.h"
+}
+
 using namespace std;
 
 struct float4 {
@@ -25,3 +30,8 @@ int version_compare(string v1, string v2);
 void run_updater_script();
 QAngle angle_from_quaternion(float x, float y, float z, float w);
 float4 quatFromAngle(QAngle ang);
+
+extern SM64TextureAtlasInfo mario_atlas_info;
+extern SM64TextureAtlasInfo coin_atlas_info;
+extern SM64TextureAtlasInfo ui_atlas_info;
+extern SM64TextureAtlasInfo health_atlas_info;

@@ -49,8 +49,16 @@ struct mInfo {
 	int animInfoRef = -1;
 };
 
+struct free_delete {
+	void operator()(void* x) { free(x); }
+};
+
 bool isGlobalInit = false;
-uint8_t textureData[4 * SM64_TEXTURE_WIDTH * SM64_TEXTURE_HEIGHT];
+uint8_t** texPointers;
+//uint8_t textureData[4 * SM64_TEXTURE_WIDTH * SM64_TEXTURE_HEIGHT];
+//uint8_t coinTextureData[4 * 128 * 32];
+//uint8_t uiTextureData[4 * 224 * 16];
+//uint8_t healthTextureData[4 * 10*32 * 64];
 double scaleFactor = 2.0;
 map<int32_t, mInfo> mInfos;
 bool autoUpdatesOn = false;
@@ -319,6 +327,7 @@ LUA_FUNCTION(IsGlobalInit)
 	return 1;
 }
 
+vector<vector<uint8_t>> textureData;
 LUA_FUNCTION(GlobalInit)
 {
 	LUA->CheckType(1, Type::String);
@@ -333,37 +342,69 @@ LUA_FUNCTION(GlobalInit)
 		return 1;
 	}
 
-	sm64_global_init(romFile.data(), textureData, (SM64DebugPrintFunctionPtr)&debug_print);
+	SM64TextureAtlasInfo* atlases[4] = {
+		&mario_atlas_info,
+		&coin_atlas_info,
+		&ui_atlas_info,
+		&health_atlas_info
+	};
 
-	LUA->CreateTable();
-	for (int i = 0; i < sizeof(textureData); i += 4)
+	int sizes[4];
+	int texCount = sizeof(sizes) / sizeof(int);
+	for (int i = 0; i < texCount; i++)
 	{
-		LUA->PushNumber(i / 4 + 1);
+		SM64TextureAtlasInfo* atlasPtr = atlases[i];
+		sizes[i] = 4 * atlasPtr->atlasWidth * atlasPtr->atlasHeight;
+	}
+
+	sm64_global_init(romFile.data(), (SM64DebugPrintFunctionPtr)&debug_print);
+
+	for (int j = 0; j < texCount; j++)
+	{
+		uint8_t* texBuffer = ((uint8_t*)malloc(sizes[j] * sizeof(uint8_t)));
+		sm64_texture_load(romFile.data(), atlases[j], texBuffer);
+
 		LUA->CreateTable();
-			LUA->PushNumber(1);
-			LUA->PushNumber(textureData[i]);
+		for (int i = 0; i < sizes[j]; i += 4)
+		{
+			LUA->PushNumber(i / 4 + 1);
+			LUA->CreateTable();
+				LUA->PushNumber(1);
+				LUA->PushNumber(texBuffer[i]);
+				LUA->SetTable(-3);
+				LUA->PushNumber(2);
+				LUA->PushNumber(texBuffer[i + 1]);
+				LUA->SetTable(-3);
+				LUA->PushNumber(3);
+				LUA->PushNumber(texBuffer[i + 2]);
+				LUA->SetTable(-3);
+				LUA->PushNumber(4);
+				LUA->PushNumber(texBuffer[i + 3]);
+				LUA->SetTable(-3);
 			LUA->SetTable(-3);
-			LUA->PushNumber(2);
-			LUA->PushNumber(textureData[i+1]);
-			LUA->SetTable(-3);
-			LUA->PushNumber(3);
-			LUA->PushNumber(textureData[i+2]);
-			LUA->SetTable(-3);
-			LUA->PushNumber(4);
-			LUA->PushNumber(textureData[i+3]);
-			LUA->SetTable(-3);
-		LUA->SetTable(-3);
+		}
+
+		if (texBuffer) {
+			free(texBuffer);
+			texBuffer = NULL;
+		}
 	}
 
 	isGlobalInit = true;
 
-	return 1;
+	return texCount;
 }
 
 LUA_FUNCTION(GlobalTerminate)
 {
 	sm64_global_terminate();
 	isGlobalInit = false;
+
+	//for (int i = 0; i < sizeof(texPointers) / sizeof(uint8_t*); i++)
+	//{
+	//	if (texPointers[i] != nullptr)
+	//		free(texPointers[i]);
+	//}
 
 	LUA->PushBool(true);
 	return 1;
@@ -989,6 +1030,14 @@ LUA_FUNCTION(MarioTick)
 		LUA->PushNumber(8);
 		LUA->PushNumber(outState.invincTimer);
 		LUA->SetTable(-3);
+
+		LUA->PushNumber(9);
+		LUA->PushNumber(outState.hurtCounter);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(10);
+		LUA->PushNumber(outState.numLives);
+		LUA->SetTable(-3);
 	LUA->Pop();
 
 	// Populate geometry table
@@ -1171,6 +1220,17 @@ LUA_FUNCTION(MarioHeal)
 	return 1;
 }
 
+LUA_FUNCTION(MarioSetLives)
+{
+	LUA->CheckType(1, Type::Number); // Mario ID
+	LUA->CheckType(2, Type::Number); // Lives
+
+	sm64_mario_set_lives((int32_t)LUA->GetNumber(1), (uint8_t)LUA->GetNumber(2));
+	LUA->Pop(2);
+
+	return 1;
+}
+
 LUA_FUNCTION(MarioEnableCap)
 {
 	LUA->CheckType(1, Type::Number); // Mario ID
@@ -1319,6 +1379,7 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(ObjectDelete);
 		DEFINE_FUNCTION(MarioTakeDamage);
 		DEFINE_FUNCTION(MarioHeal);
+		DEFINE_FUNCTION(MarioSetLives);
 		DEFINE_FUNCTION(MarioEnableCap);
 		DEFINE_FUNCTION(MarioExtendCapTime);
 		DEFINE_FUNCTION(MarioAttack);
