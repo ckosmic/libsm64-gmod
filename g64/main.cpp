@@ -12,15 +12,18 @@
 #define GetCurrentDir _getcwd
 #endif
 
+#include <SDL.h>
+
 #include "GarrysMod/Lua/Interface.h"
 extern "C"
 {
 #include "libsm64.h"
 }
 #include "utils.h"
+#include "gamepad.h"
 
 #define DEFINE_FUNCTION(x) GlobalLUA->PushCFunction(x); GlobalLUA->SetField(-2, #x);
-#define PACKAGE_VERSION "0.1.1"
+#define PACKAGE_VERSION "1.0.0"
 
 #define READ(a) f.read(reinterpret_cast<char*>(&a), sizeof(a));
 #define READ_INTO(a, s) f.read(reinterpret_cast<char*>(&a), sizeof(a)); LUA->PushNumber(a); LUA->SetField(-2, s);
@@ -63,33 +66,6 @@ double scaleFactor = 2.0;
 map<int32_t, mInfo> mInfos;
 bool autoUpdatesOn = false;
 bool needsToUpdate = false;
-
-void debug_print(char* text)
-{
-	GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
-	GlobalLUA->GetField(-1, "print");
-	GlobalLUA->PushString(text);
-	GlobalLUA->Call(1, 0);
-	GlobalLUA->Pop();
-}
-
-void debug_print(const char* text)
-{
-	GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
-	GlobalLUA->GetField(-1, "print");
-	GlobalLUA->PushString(text);
-	GlobalLUA->Call(1, 0);
-	GlobalLUA->Pop();
-}
-
-void debug_print(string text)
-{
-	GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
-	GlobalLUA->GetField(-1, "print");
-	GlobalLUA->PushString(text.c_str());
-	GlobalLUA->Call(1, 0);
-	GlobalLUA->Pop();
-}
 
 float n_fmod(float a, float b) {
 	return a - b * floor(a / b);
@@ -332,7 +308,8 @@ LUA_FUNCTION(GlobalInit)
 {
 	LUA->CheckType(1, Type::String);
 
-	const char* path = LUA->GetString(1);
+	const char* path = (char*)LUA->GetString(1);
+	string pathStr = string(path);
 	LUA->Pop();
 
 	vector<uint8_t> romFile = ReadBinaryFile(path);
@@ -971,15 +948,18 @@ LUA_FUNCTION(MarioTick)
 	Vector facing = LUA->GetVector(3);
 	Vector joystick = LUA->GetVector(4);
 
+	GamepadInput* gamepad = poll_controller();
+
 	SM64MarioInputs inputs;
 	inputs.camLookX = -facing.x;
 	inputs.camLookZ = facing.y;
-	inputs.stickX = joystick.x;
-	inputs.stickY = joystick.z;
-	inputs.buttonA = LUA->GetBool(5);
-	inputs.buttonB = LUA->GetBool(6);
-	inputs.buttonZ = LUA->GetBool(7);
+	inputs.stickX = clamp(gamepad->lAxisX + joystick.x, -1.0f, 1.0f);
+	inputs.stickY = clamp(gamepad->lAxisY + joystick.z, -1.0f, 1.0f);
+	inputs.buttonA = gamepad->aButton || LUA->GetBool(5);
+	inputs.buttonB = gamepad->xButton || LUA->GetBool(6);
+	inputs.buttonZ = (gamepad->rTrigger > 0.75f) || LUA->GetBool(7);
 	LUA->Pop(7);
+
 	SM64MarioState outState;
 
 	sm64_mario_tick(marioId, &inputs, &outState, &mInfos[marioId].geoBuffers);
@@ -1037,6 +1017,14 @@ LUA_FUNCTION(MarioTick)
 
 		LUA->PushNumber(10);
 		LUA->PushNumber(outState.numLives);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(11);
+		LUA->PushBool(outState.holdingObject);
+		LUA->SetTable(-3);
+
+		LUA->PushNumber(12);
+		LUA->PushNumber(outState.dropMethod);
 		LUA->SetTable(-3);
 	LUA->Pop();
 
@@ -1348,6 +1336,97 @@ LUA_FUNCTION(SetGlobalVolume)
 	return 1;
 }
 
+LUA_FUNCTION(SetGlobalReverb)
+{
+	LUA->CheckType(1, Type::Number); // Volume
+
+	sm64_set_reverb((uint8_t)LUA->GetNumber(1));
+	LUA->Pop(1);
+
+	return 1;
+}
+
+LUA_FUNCTION(GetGamepadAxis)
+{
+	LUA->CheckType(1, Type::String);
+
+	const char* name = LUA->GetString(1);
+	LUA->Pop(1);
+
+	if (strcmp(name, "lAxisX") == 0) {
+		LUA->PushNumber(mainGamepad->lAxisX);
+	} else if (strcmp(name, "lAxisY") == 0) {
+		LUA->PushNumber(mainGamepad->lAxisY);
+	} else if (strcmp(name, "rAxisX") == 0) {
+		LUA->PushNumber(mainGamepad->rAxisX);
+	} else if (strcmp(name, "rAxisY") == 0) {
+		LUA->PushNumber(mainGamepad->rAxisY);
+	} else if (strcmp(name, "lTrigger") == 0) {
+		LUA->PushNumber(mainGamepad->lTrigger);
+	} else if (strcmp(name, "rTrigger") == 0) {
+		LUA->PushNumber(mainGamepad->rTrigger);
+	}
+
+	return 1;
+}
+
+LUA_FUNCTION(GetGamepadButton)
+{
+	LUA->CheckType(1, Type::String);
+
+	const char* name = LUA->GetString(1);
+	LUA->Pop(1);
+
+	// Don't look at me like that
+	if (strcmp(name, "aButton") == 0) {
+		LUA->PushBool(mainGamepad->aButton);
+	} else if (strcmp(name, "bButton") == 0) {
+		LUA->PushBool(mainGamepad->bButton);
+	} else if (strcmp(name, "xButton") == 0) {
+		LUA->PushBool(mainGamepad->xButton);
+	} else if (strcmp(name, "yButton") == 0) {
+		LUA->PushBool(mainGamepad->yButton);
+	} else if (strcmp(name, "backButton") == 0) {
+		LUA->PushBool(mainGamepad->backButton);
+	} else if (strcmp(name, "guideButton") == 0) {
+		LUA->PushBool(mainGamepad->guideButton);
+	} else if (strcmp(name, "startButton") == 0) {
+		LUA->PushBool(mainGamepad->startButton);
+	} else if (strcmp(name, "lStickButton") == 0) {
+		LUA->PushBool(mainGamepad->lStickButton);
+	} else if (strcmp(name, "rStickButton") == 0) {
+		LUA->PushBool(mainGamepad->rStickButton);
+	} else if (strcmp(name, "lShoulder") == 0) {
+		LUA->PushBool(mainGamepad->lShoulder);
+	} else if (strcmp(name, "rShoulder") == 0) {
+		LUA->PushBool(mainGamepad->rShoulder);
+	} else if (strcmp(name, "dPadUp") == 0) {
+		LUA->PushBool(mainGamepad->dPadUp);
+	} else if (strcmp(name, "dPadDown") == 0) {
+		LUA->PushBool(mainGamepad->dPadDown);
+	} else if (strcmp(name, "dPadLeft") == 0) {
+		LUA->PushBool(mainGamepad->dPadLeft);
+	} else if (strcmp(name, "dPadRight") == 0) {
+		LUA->PushBool(mainGamepad->dPadRight);
+	}
+
+	return 1;
+}
+
+LUA_FUNCTION(GetGamepadName)
+{
+	LUA->PushString(get_gamepad_name());
+
+	return 1;
+}
+
+LUA_FUNCTION(GeneralUpdate)
+{
+	poll_events();
+
+	return 0;
+}
+
 GMOD_MODULE_OPEN()
 {
 	GlobalLUA = LUA;
@@ -1396,9 +1475,16 @@ GMOD_MODULE_OPEN()
 		DEFINE_FUNCTION(SetAutoUpdateState);
 		DEFINE_FUNCTION(CompareVersions);
 		DEFINE_FUNCTION(SetGlobalVolume);
+		DEFINE_FUNCTION(SetGlobalReverb);
 		DEFINE_FUNCTION(LoadMapCache);
+		DEFINE_FUNCTION(GeneralUpdate);
+		DEFINE_FUNCTION(GetGamepadAxis);
+		DEFINE_FUNCTION(GetGamepadButton);
+		DEFINE_FUNCTION(GetGamepadName);
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
+
+	gamepad_init();
 
 	return 0;
 }
@@ -1412,6 +1498,8 @@ GMOD_MODULE_CLOSE()
 	LUA->PushNil();
 	LUA->SetField(-2, "libsm64");
 	LUA->Pop();
+
+	gamepad_close();
 
 	if(autoUpdatesOn && needsToUpdate)
 		run_updater_script();

@@ -2,10 +2,37 @@
 #include <iostream>
 #include <filesystem>
 #include <Windows.h>
-#include "GarrysMod/Lua/Interface.h"
 #include "utils.h"
 
 using namespace std;
+using namespace GarrysMod::Lua;
+
+void debug_print(char* text)
+{
+    GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+    GlobalLUA->GetField(-1, "print");
+    GlobalLUA->PushString(text);
+    GlobalLUA->Call(1, 0);
+    GlobalLUA->Pop();
+}
+
+void debug_print(const char* text)
+{
+    GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+    GlobalLUA->GetField(-1, "print");
+    GlobalLUA->PushString(text);
+    GlobalLUA->Call(1, 0);
+    GlobalLUA->Pop();
+}
+
+void debug_print(string text)
+{
+    GlobalLUA->PushSpecial(GarrysMod::Lua::SPECIAL_GLOB);
+    GlobalLUA->GetField(-1, "print");
+    GlobalLUA->PushString(text.c_str());
+    GlobalLUA->Call(1, 0);
+    GlobalLUA->Pop();
+}
 
 string exe_path()
 {

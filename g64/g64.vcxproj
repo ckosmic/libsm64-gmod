@@ -19,10 +19,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="gamepad.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="gamepad.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -92,15 +94,15 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\ckosmic\Documents\libsm64\dist\include;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Users\ckosmic\Documents\SDL2-2.0.22\include;C:\Users\ckosmic\Documents\libsm64\dist\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>C:\Users\ckosmic\Documents\libsm64-gmod\libsm64-gmod\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
-    <LibraryPath>C:\Users\ckosmic\Documents\libsm64\dist;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\Users\ckosmic\Documents\SDL2-2.0.22\lib\x64;C:\Users\ckosmic\Documents\libsm64\dist;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\Users\ckosmic\Documents\libsm64\dist\include;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Users\ckosmic\Documents\SDL2-2.0.22\include;C:\Users\ckosmic\Documents\libsm64\dist\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>C:\Users\ckosmic\Documents\libsm64-gmod\libsm64-gmod\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
-    <LibraryPath>C:\Users\ckosmic\Documents\libsm64\dist;$(LibraryPath)</LibraryPath>
+    <LibraryPath>C:\Users\ckosmic\Documents\SDL2-2.0.22\lib\x64;C:\Users\ckosmic\Documents\libsm64\dist;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -166,7 +168,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>C:\Users\ckosmic\Documents\libsm64\dist;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>sm64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>sm64.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(OutDir)g64.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\gmcl_g64_win64.dll"</Command>
@@ -192,7 +194,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>C:\Users\ckosmic\Documents\libsm64\dist;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>sm64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>sm64.lib;SDL2.lib;SDL2main.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(OutDir)g64.dll" "D:\Steam\steamapps\common\GarrysMod\garrysmod\lua\bin\gmcl_g64_win64.dll"</Command>
