@@ -85,24 +85,28 @@
     <IncludePath>..\libsm64\dist32\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>..\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LibraryPath>..\libsm64\dist32;$(LibraryPath)</LibraryPath>
+    <TargetName>gmcl_g64_win32</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>..\libsm64\dist32\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>..\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LibraryPath>..\libsm64\dist32;$(LibraryPath)</LibraryPath>
+    <TargetName>gmcl_g64_win32</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>..\SDL2-2.0.22\include;..\libsm64\dist\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>..\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LibraryPath>..\SDL2-2.0.22\lib\x64;..\libsm64\dist;$(LibraryPath)</LibraryPath>
+    <TargetName>gmcl_g64_win64</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>..\SDL2-2.0.22\include;..\libsm64\dist\include;$(IncludePath)</IncludePath>
     <ExternalIncludePath>..\gmod-module-base\include;$(ExternalIncludePath)</ExternalIncludePath>
     <LibraryPath>..\SDL2-2.0.22\lib\x64;..\libsm64\dist;$(LibraryPath)</LibraryPath>
+    <TargetName>gmcl_g64_win64</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
