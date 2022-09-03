@@ -38,9 +38,10 @@ jobs:
       id: download-artifact
       uses: dawidd6/action-download-artifact@v2
       with:
-        github_token: ${{secrets.GITHUB_TOKEN}}
+        github_token: ${{secrets.SECRET_PAT}}
         repo: ckosmic/libsm64
         branch: gmod
+        name: libsm64
         path: libsm64/dist
 
     - name: Add MSBuild to PATH
