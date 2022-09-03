@@ -32,7 +32,7 @@ jobs:
       with:
         version: 2.0.22
         sources_destination: .
-        binaries_destination: bin
+        binaries_destination: .
         
     - name: Download artifact
       id: download-artifact
