@@ -195,3 +195,13 @@ SM64TextureAtlasInfo health_atlas_info = {
         {.offset = 0x29628, .width = 32, .height = 64, .format = FORMAT_RGBA },
     }
 };
+
+SM64TextureAtlasInfo particle_atlas_info = {
+    .offset = 0x114750,
+    .numUsedTextures = 1,
+    .atlasWidth = 1 * 32,
+    .atlasHeight = 32,
+    .texInfos = {
+        {.offset = 0x1CD60, .width = 32, .height = 32, .format = FORMAT_RGBA },
+    }
+};

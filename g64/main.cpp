@@ -319,44 +319,41 @@ LUA_FUNCTION(GlobalInit)
 		return 1;
 	}
 
-	SM64TextureAtlasInfo* atlases[4] = {
+	sm64_global_init(romFile.data(), (SM64DebugPrintFunctionPtr)&debug_print);
+
+	const int texCount = 5;
+
+	SM64TextureAtlasInfo* atlases[texCount] = {
 		&mario_atlas_info,
 		&coin_atlas_info,
 		&ui_atlas_info,
-		&health_atlas_info
+		&health_atlas_info,
+		&particle_atlas_info
 	};
-
-	int sizes[4];
-	int texCount = sizeof(sizes) / sizeof(int);
-	for (int i = 0; i < texCount; i++)
-	{
-		SM64TextureAtlasInfo* atlasPtr = atlases[i];
-		sizes[i] = 4 * atlasPtr->atlasWidth * atlasPtr->atlasHeight;
-	}
-
-	sm64_global_init(romFile.data(), (SM64DebugPrintFunctionPtr)&debug_print);
 
 	for (int j = 0; j < texCount; j++)
 	{
-		uint8_t* texBuffer = ((uint8_t*)malloc(sizes[j] * sizeof(uint8_t)));
+		SM64TextureAtlasInfo* atlasPtr = atlases[j];
+		int size = 4 * atlasPtr->atlasWidth * atlasPtr->atlasHeight;
+		uint8_t* texBuffer = ((uint8_t*)malloc(size * sizeof(uint8_t)));
 		sm64_texture_load(romFile.data(), atlases[j], texBuffer);
 
 		LUA->CreateTable();
-		for (int i = 0; i < sizes[j]; i += 4)
+		for (int i = 0; i < size; i += 4)
 		{
 			LUA->PushNumber(i / 4 + 1);
 			LUA->CreateTable();
 				LUA->PushNumber(1);
-				LUA->PushNumber(texBuffer[i]);
+				LUA->PushNumber(texBuffer[  i  ]); // r
 				LUA->SetTable(-3);
 				LUA->PushNumber(2);
-				LUA->PushNumber(texBuffer[i + 1]);
+				LUA->PushNumber(texBuffer[i + 1]); // g
 				LUA->SetTable(-3);
 				LUA->PushNumber(3);
-				LUA->PushNumber(texBuffer[i + 2]);
+				LUA->PushNumber(texBuffer[i + 2]); // b
 				LUA->SetTable(-3);
 				LUA->PushNumber(4);
-				LUA->PushNumber(texBuffer[i + 3]);
+				LUA->PushNumber(texBuffer[i + 3]); // a
 				LUA->SetTable(-3);
 			LUA->SetTable(-3);
 		}

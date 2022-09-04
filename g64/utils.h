@@ -53,3 +53,4 @@ extern SM64TextureAtlasInfo mario_atlas_info;
 extern SM64TextureAtlasInfo coin_atlas_info;
 extern SM64TextureAtlasInfo ui_atlas_info;
 extern SM64TextureAtlasInfo health_atlas_info;
+extern SM64TextureAtlasInfo particle_atlas_info;
